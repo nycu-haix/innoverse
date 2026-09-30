@@ -22,8 +22,10 @@ services:
       HOTWORDS: ${HOTWORDS:-}
       PERSIST_TRANSCRIPTS: ${PERSIST_TRANSCRIPTS:-false}
       TRUST_PROXY: ${TRUST_PROXY:-true}
+    # Host access for local runs only. Loopback + 8080 by default so it never collides with
+    # the Dokploy panel on :3000 or exposes plain HTTP publicly; Traefik uses the Docker network.
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:3000"
     volumes:
       - app-data:/data/app
       - codex-data:/data/codex

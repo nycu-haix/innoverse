@@ -85,7 +85,7 @@ Full stack:
 
 ```sh
 cp .env.example .env
-docker compose up --build        # http://localhost:3000
+docker compose up --build        # http://localhost:8080
 ```
 
 Dev server settings come from environment variables (see `apps/server/src/config.ts`). Local defaults keep data in `apps/server/data/app.db` and use your normal `~/.codex` unless `CODEX_HOME` is set.
@@ -181,10 +181,10 @@ The model list is never hardcoded. The server calls `model/list`, caches it brie
 cp .env.example .env               # adjust if needed; no secrets required
 docker compose up --build -d
 docker compose logs -f asr         # first start downloads Fun-ASR-Nano into asr-model-cache
-open http://localhost:3000
+open http://localhost:8080
 ```
 
-- `app`: compiled React app, Fastify, and Codex CLI. It is the only published port (`APP_PORT`, default 3000). Volumes: `app-data` (`/data/app`, SQLite) and `codex-data` (`/data/codex`).
+- `app`: compiled React app, Fastify, and Codex CLI. It is the only service with a host port: `127.0.0.1:8080` by default (`APP_BIND`, `APP_PORT`). The container itself still listens on 3000. Volumes: `app-data` (`/data/app`, SQLite) and `codex-data` (`/data/codex`).
 - `asr`: Python, CUDA PyTorch, FunASR, ffmpeg and OpenCC on the NVIDIA GPU (`deploy.resources.reservations.devices`, `NVIDIA_VISIBLE_DEVICES`). Volume: `asr-model-cache` (`/models`). It is internal only.
 - Both services define health checks. The ASR check allows a long start period for the first model download. Services handle SIGTERM for graceful shutdown.
 
@@ -195,7 +195,7 @@ The stack is **two services** (`app` + `asr`), so deploy it as a Compose service
 1. In the project, choose **Create Service → Compose** (type **Docker Compose**), point it at this repository, and set the compose path to `./docker-compose.yml`. If you already created an Application from the root `Dockerfile`, delete it, or at least remove its domain, so two app containers don't compete for the same domain.
 2. Make sure the server has the NVIDIA driver and the NVIDIA Container Toolkit (`nvidia-ctk runtime configure --runtime=docker && systemctl restart docker`), and that `docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi` works.
 3. Set environment variables in **Environment**, using `.env.example` as reference. Keep `TRUST_PROXY=true` behind Traefik.
-4. Under **Domains**, attach your domain to service `app`, port `3000`. Use HTTPS: browsers only allow microphone access on secure origins. You can drop the `ports:` mapping if you only access the app through the domain.
+4. Under **Domains**, attach your domain to service `app`, port `3000`. Use HTTPS: browsers only allow microphone access on secure origins. Domain traffic goes through Traefik on the Docker network, so the loopback `ports:` mapping is only for local access and never conflicts with the Dokploy panel on `:3000`.
 5. Deploy. Named volumes (`app-data`, `codex-data`, `asr-model-cache`) persist across redeploys. Don't rename them or remove them between deployments, or you'll lose the SQLite data, the Codex login and the model cache.
 6. Open the domain and complete the device login once.
 
