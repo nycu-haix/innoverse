@@ -175,7 +175,9 @@ describe("POST /api/generate", () => {
 			await new Promise(resolve => setTimeout(resolve, 20));
 			expect((await readdir(tempRoot)).filter(name => name.startsWith("innoverse-upload-"))).toEqual([]);
 		} finally {
-			process.env.TMPDIR = previous;
+			// Assigning undefined would store the string "undefined"; unset it instead.
+			if (previous === undefined) delete process.env.TMPDIR;
+			else process.env.TMPDIR = previous;
 			await rm(tempRoot, { recursive: true, force: true });
 		}
 	});
