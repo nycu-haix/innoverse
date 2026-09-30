@@ -221,11 +221,6 @@
 	margin: 18mm 16mm;
 }
 
-@page slide {
-	size: A4 landscape;
-	margin: 0;
-}
-
 @media print {
 	html,
 	body,
@@ -247,27 +242,34 @@
 		background: transparent !important;
 	}
 
-	/* Presentation: one landscape page, slide scaled to A4 width (297mm ≈ 1122px). */
+	/*
+	 * Presentation: the paper stays A4 portrait (no reliance on landscape/named-page
+	 * support) and the slide is rotated 90° onto it with its layout unchanged.
+	 * Scale 0.6 keeps the rotated slide (540 × 960 px ≈ 143 × 254 mm) inside the
+	 * default page margins (178 × 261 mm), so it is always exactly one page.
+	 */
 	.slide-stage {
-		page: slide;
+		--print-scale: 0.6;
 		display: flex !important;
 		align-items: center;
 		justify-content: center;
 		width: 100% !important;
-		height: 100vh !important;
+		height: 250mm !important;
 		padding: 0 !important;
+		overflow: hidden;
 	}
 
 	.slide-frame {
-		width: calc(1600px * 0.7) !important;
-		height: calc(900px * 0.7) !important;
+		width: calc(900px * var(--print-scale)) !important;
+		height: calc(1600px * var(--print-scale)) !important;
 		box-shadow: none !important;
 		border: none !important;
 		border-radius: 0 !important;
 	}
 
+	/* scale → rotate 90° clockwise about the top-left → shift right by the rotated width. */
 	.slide-canvas {
-		transform: scale(0.7) !important;
+		transform: translateX(calc(900px * var(--print-scale))) rotate(90deg) scale(var(--print-scale)) !important;
 	}
 
 	.slide-canvas,
