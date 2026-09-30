@@ -60,6 +60,11 @@ export class GenerationService {
 		const { codex, db } = this.options;
 		if (!codex.isAuthenticated) throw new AppError("CODEX_UNAUTHENTICATED");
 
+		// Fail fast with a real HTTP status while we still can: once the NDJSON stream
+		// starts, the response is already 200 and errors can only be sent as events.
+		const asrHealth = await this.options.asr.health();
+		if (!asrHealth.reachable || !asrHealth.modelLoaded) throw new AppError("ASR_UNAVAILABLE", { detail: asrHealth.reachable ? "asr model not loaded" : "asr unreachable" });
+
 		const models = await codex.listModels();
 		const selection = resolveModelSelection(models, metadata.model, metadata.reasoningEffort);
 		if (!selection.ok) throw new AppError(selection.code);

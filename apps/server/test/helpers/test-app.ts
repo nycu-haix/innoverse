@@ -15,6 +15,7 @@ export class FakeAsr implements AsrProvider {
 	calls: TranscriptionInput[] = [];
 	text = "這顆抗生素一天三次、飯後吃，一次一顆，總共吃五天。";
 	fail: AppError | null = null;
+	healthy = true;
 
 	async transcribe(input: TranscriptionInput) {
 		this.calls.push(input);
@@ -23,7 +24,7 @@ export class FakeAsr implements AsrProvider {
 	}
 
 	async health() {
-		return { reachable: true, modelLoaded: true, model: "fake", device: "cpu" };
+		return this.healthy ? { reachable: true, modelLoaded: true, model: "fake", device: "cpu" } : { reachable: false, modelLoaded: false, model: null, device: null };
 	}
 }
 

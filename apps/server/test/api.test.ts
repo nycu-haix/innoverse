@@ -249,6 +249,16 @@ describe("POST /api/generate", () => {
 		expect(db.getArtifact(WORKSPACE_ID, "presentation")).toBeNull();
 	});
 
+	it("returns 503 before streaming when ASR is unavailable", async () => {
+		const { app, asr } = await setup({ reply: slideReply });
+		asr.healthy = false;
+		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
+		expect(response.statusCode).toBe(503);
+		expect(response.headers["content-type"]).toContain("application/json");
+		expect(response.json()).toMatchObject({ error: { code: "ASR_UNAVAILABLE", message: "語音辨識服務目前無法使用。" } });
+		expect(asr.calls).toHaveLength(0);
+	});
+
 	it("requires Codex authentication", async () => {
 		const { app } = await setup({ authenticated: false });
 		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });

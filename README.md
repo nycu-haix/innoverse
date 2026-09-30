@@ -25,7 +25,7 @@ Codex app-server (one persistent `codex app-server --listen stdio://` child, JSO
 Zod validation → slide HTML sanitizer → optimistic revision check → SQLite → browser renderer
 ```
 
-- **Progress** uses one long `POST /api/generate` request. Pre-checks fail fast as JSON errors (auth, model/effort, stale revision, bad audio). After that the response streams NDJSON events: `stage: transcribing`, `stage: generating`, then `result` or `error`. The browser shows 上傳中… / 語音辨識中… / 整理內容中…. Only a complete, validated artifact is ever sent.
+- **Progress** uses one long `POST /api/generate` request. Pre-checks fail fast as JSON errors with a real HTTP status (auth, ASR readiness, model/effort, stale revision, bad audio). After that the response is already `200` and streams NDJSON events, so errors that happen mid-generation arrive as an `error` event: `stage: transcribing`, `stage: generating`, then `result` or `error`. The browser shows 上傳中… / 語音辨識中… / 整理內容中…. Only a complete, validated artifact is ever sent.
 - **Codex** runs as one resident app-server process, never `codex exec` per request. The client in `apps/server/src/codex/app-server-client.ts` correlates request ids, dispatches notifications, declines approval requests, rejects pending calls when the process crashes, and restarts it with bounded exponential backoff. Threads use `sandbox: read-only`, `approvalPolicy: never`, network off, and an empty working directory.
 - **Continue OFF** starts a fresh Codex thread with no previous artifact. The old artifact stays on screen until the new one is saved.
 - **Continue ON** resumes the artifact's thread (`thread/resume`, falling back to a new thread if that fails). It **always** sends the latest saved artifact, which may include manual edits, inside `<current_artifact>`.
@@ -190,7 +190,9 @@ open http://localhost:3000
 
 ## Dokploy
 
-1. Create a **Docker Compose** application pointing at this repository (compose path `docker-compose.yml`).
+The stack is **two services** (`app` + `asr`), so deploy it as a Compose service. A Dokploy **Application** with build type **Dockerfile** only builds the root `Dockerfile`, which is the `app` service alone: there is no ASR, and every recording fails with `語音辨識服務目前無法使用。` (`/api/health` shows `asr.reachable: false`).
+
+1. In the project, choose **Create Service → Compose** (type **Docker Compose**), point it at this repository, and set the compose path to `./docker-compose.yml`. If you already created an Application from the root `Dockerfile`, delete it, or at least remove its domain, so two app containers don't compete for the same domain.
 2. Make sure the server has the NVIDIA driver and the NVIDIA Container Toolkit (`nvidia-ctk runtime configure --runtime=docker && systemctl restart docker`), and that `docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi` works.
 3. Set environment variables in **Environment**, using `.env.example` as reference. Keep `TRUST_PROXY=true` behind Traefik.
 4. Under **Domains**, attach your domain to service `app`, port `3000`. Use HTTPS: browsers only allow microphone access on secure origins. You can drop the `ports:` mapping if you only access the app through the domain.
