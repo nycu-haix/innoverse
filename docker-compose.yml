@@ -1,0 +1,84 @@
+# Full stack: `docker compose up --build` on a host with the NVIDIA Container Toolkit.
+# Only `app` is published. `asr` and the Codex stdio process are internal.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_PATH: /data/app/app.db
+      CODEX_HOME: /data/codex
+      ASR_URL: http://asr:8000
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-zh}
+      ASR_TIMEOUT_MS: ${ASR_TIMEOUT_MS:-900000}
+      CODEX_TURN_TIMEOUT_MS: ${CODEX_TURN_TIMEOUT_MS:-180000}
+      MAX_AUDIO_MINUTES: ${MAX_AUDIO_MINUTES:-60}
+      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-262144000}
+      HOTWORDS: ${HOTWORDS:-}
+      PERSIST_TRANSCRIPTS: ${PERSIST_TRANSCRIPTS:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - app-data:/data/app
+      - codex-data:/data/codex
+    depends_on:
+      asr:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 20s
+
+  asr:
+    build:
+      context: services/asr
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      ASR_PROVIDER: ${ASR_PROVIDER:-funasr}
+      ASR_MODEL: ${ASR_MODEL:-FunAudioLLM/Fun-ASR-Nano-2512}
+      ASR_MODEL_HUB: ${ASR_MODEL_HUB:-hf}
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-zh}
+      ASR_DEVICE: ${ASR_DEVICE:-cuda}
+      ASR_MAX_CONCURRENCY: ${ASR_MAX_CONCURRENCY:-2}
+      ASR_OPENCC_CONFIG: ${ASR_OPENCC_CONFIG:-s2tw}
+      MAX_AUDIO_MINUTES: ${MAX_AUDIO_MINUTES:-60}
+      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-262144000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HF_TOKEN: ${HF_TOKEN:-}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    expose:
+      - "8000"
+    volumes:
+      - asr-model-cache:/models
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 1200s
+      retries: 3
+    stop_grace_period: 30s
+
+volumes:
+  app-data:
+  codex-data:
+  asr-model-cache:

@@ -1,1 +1,6 @@
 pnpm-lock.yaml
+dist
+coverage
+services/asr/.venv
+services/asr/.pytest_cache
+services/asr/.ruff_cache

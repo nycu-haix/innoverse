@@ -1,15 +1,35 @@
 {
-	"name": "project",
+	"name": "innoverse",
+	"private": true,
 	"type": "module",
 	"scripts": {
+		"build": "pnpm --filter @innoverse/web --filter @innoverse/server run build",
+		"check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+		"dev": "pnpm --parallel --filter @innoverse/web --filter @innoverse/server run dev",
 		"format": "prettier --write .",
+		"format:check": "prettier --check .",
 		"preinstall": "npx only-allow pnpm",
-		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'"
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"prepare": "sh -c 'if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi'",
+		"test": "pnpm -r --if-present run test",
+		"test:unit": "pnpm -r --if-present run test",
+		"typecheck": "pnpm -r --if-present run typecheck"
 	},
 	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"eslint": "^10.11.0",
+		"eslint-plugin-react-hooks": "^7.1.1",
+		"eslint-plugin-react-refresh": "^0.5.7",
+		"globals": "^17.12.0",
 		"prettier": "^3.9.9",
 		"prettier-plugin-organize-imports": "^4.3.0",
-		"prettier-plugin-packagejson": "^3.0.2"
+		"prettier-plugin-packagejson": "^3.0.2",
+		"typescript": "~6.0.3",
+		"typescript-eslint": "^8.71.0"
 	},
-	"packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45"
+	"packageManager": "pnpm@12.8.1+sha512.f64ba907507f5ceafe06c8d38e6052d0179444580ec1279ddd5bfc11cb48aa8a2644b66598e07e761da84872a9fc57d5f902b87fa49d024198d558612aabbe45",
+	"engines": {
+		"node": ">=22.12"
+	}
 }

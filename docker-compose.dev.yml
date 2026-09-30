@@ -1,0 +1,6 @@
+# Development override: publish the ASR service on localhost so `pnpm dev` can reach it.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build asr
+services:
+  asr:
+    ports:
+      - "127.0.0.1:8000:8000"

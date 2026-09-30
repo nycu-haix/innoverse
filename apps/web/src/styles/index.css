@@ -1,0 +1,315 @@
+@import "tailwindcss";
+
+/*
+ * AI-generated slides may only use classes from the shared allowlist. Registering the
+ * policy file as a Tailwind source compiles every allowlisted class into the production
+ * CSS, independent of what the model returns at runtime. scripts/check-slide-classes.mjs
+ * verifies this after `vite build`.
+ */
+@source "../../../../packages/shared/src/slide-policy.ts";
+
+/* Catppuccin Latte — the only palette used by the app. */
+@theme {
+	--color-ctp-rosewater: #dc8a78;
+	--color-ctp-flamingo: #dd7878;
+	--color-ctp-pink: #ea76cb;
+	--color-ctp-mauve: #8839ef;
+	--color-ctp-red: #d20f39;
+	--color-ctp-maroon: #e64553;
+	--color-ctp-peach: #fe640b;
+	--color-ctp-yellow: #df8e1d;
+	--color-ctp-green: #40a02b;
+	--color-ctp-teal: #179299;
+	--color-ctp-sky: #04a5e5;
+	--color-ctp-sapphire: #209fb5;
+	--color-ctp-blue: #1e66f5;
+	--color-ctp-lavender: #7287fd;
+	--color-ctp-text: #4c4f69;
+	--color-ctp-subtext1: #5c5f77;
+	--color-ctp-subtext0: #6c6f85;
+	--color-ctp-overlay2: #7c7f93;
+	--color-ctp-overlay1: #8c8fa1;
+	--color-ctp-overlay0: #9ca0b0;
+	--color-ctp-surface2: #acb0be;
+	--color-ctp-surface1: #bcc0cc;
+	--color-ctp-surface0: #ccd0da;
+	--color-ctp-base: #eff1f5;
+	--color-ctp-mantle: #e6e9ef;
+	--color-ctp-crust: #dce0e8;
+
+	--font-sans: "Noto Sans TC", "PingFang TC", "Heiti TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+	--font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+	--shadow-float: 0 1px 2px rgb(76 79 105 / 0.08), 0 8px 24px rgb(76 79 105 / 0.12);
+	--shadow-page: 0 1px 2px rgb(76 79 105 / 0.06), 0 4px 16px rgb(76 79 105 / 0.08);
+}
+
+@layer base {
+	html,
+	body,
+	#root {
+		height: 100%;
+	}
+
+	body {
+		@apply bg-ctp-mantle font-sans text-ctp-text antialiased;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-ctp-blue);
+		outline-offset: 2px;
+	}
+
+	::selection {
+		background: rgb(30 102 245 / 0.18);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* ---------- Slide ---------- */
+
+.slide-canvas {
+	width: 1600px;
+	height: 900px;
+	transform-origin: 0 0;
+	overflow: hidden;
+	position: relative;
+}
+
+.slide-content {
+	width: 100%;
+	height: 100%;
+	transform-origin: 0 0;
+}
+
+/* Generated slides are composed only from allowlisted utilities; lists need their markers back. */
+.slide-content ul.list-disc,
+.slide-content ol.list-decimal {
+	padding-inline-start: 1.2em;
+}
+
+/* ---------- Document (Milkdown) ---------- */
+
+.doc-page {
+	width: 210mm;
+	max-width: 100%;
+	min-height: 297mm;
+}
+
+.doc-content .ProseMirror {
+	outline: none;
+	min-height: calc(297mm - 40mm);
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	font-size: 11.5pt;
+	line-height: 1.75;
+	color: var(--color-ctp-text);
+}
+
+.doc-content .ProseMirror > * + * {
+	margin-top: 0.75em;
+}
+
+.doc-content .ProseMirror h1 {
+	font-size: 1.75em;
+	font-weight: 700;
+	line-height: 1.3;
+	margin-top: 0.2em;
+}
+
+.doc-content .ProseMirror h2 {
+	font-size: 1.35em;
+	font-weight: 700;
+	line-height: 1.35;
+	margin-top: 1.4em;
+}
+
+.doc-content .ProseMirror h3 {
+	font-size: 1.12em;
+	font-weight: 600;
+	margin-top: 1.2em;
+}
+
+.doc-content .ProseMirror ul {
+	list-style: disc;
+	padding-inline-start: 1.5em;
+}
+
+.doc-content .ProseMirror ol {
+	list-style: decimal;
+	padding-inline-start: 1.5em;
+}
+
+.doc-content .ProseMirror li > p {
+	margin: 0.15em 0;
+}
+
+.doc-content .ProseMirror blockquote {
+	border-inline-start: 3px solid var(--color-ctp-surface1);
+	padding-inline-start: 1em;
+	color: var(--color-ctp-subtext1);
+}
+
+.doc-content .ProseMirror strong {
+	font-weight: 700;
+}
+
+.doc-content .ProseMirror em {
+	font-style: italic;
+}
+
+.doc-content .ProseMirror code {
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+	background: var(--color-ctp-mantle);
+	border-radius: 4px;
+	padding: 0.1em 0.3em;
+}
+
+.doc-content .ProseMirror a {
+	color: var(--color-ctp-blue);
+	text-decoration: underline;
+}
+
+.doc-content .ProseMirror hr {
+	border: none;
+	border-top: 1px solid var(--color-ctp-surface0);
+	margin: 1.5em 0;
+}
+
+.doc-content .ProseMirror table {
+	border-collapse: collapse;
+	width: 100%;
+	table-layout: fixed;
+	margin: 1em 0;
+}
+
+.doc-content .ProseMirror th,
+.doc-content .ProseMirror td {
+	border: 1px solid var(--color-ctp-surface0);
+	padding: 0.4em 0.6em;
+	vertical-align: top;
+	text-align: start;
+}
+
+.doc-content .ProseMirror th {
+	background: var(--color-ctp-mantle);
+	font-weight: 600;
+}
+
+.doc-content .ProseMirror .selectedCell {
+	background: rgb(30 102 245 / 0.08);
+}
+
+.doc-content .ProseMirror[contenteditable="false"] {
+	cursor: default;
+}
+
+/* ---------- Print: only the artifact ---------- */
+
+@page {
+	size: A4;
+	margin: 18mm 16mm;
+}
+
+@page slide {
+	size: A4 landscape;
+	margin: 0;
+}
+
+@media print {
+	html,
+	body,
+	#root {
+		height: auto;
+		background: #ffffff !important;
+	}
+
+	.no-print {
+		display: none !important;
+	}
+
+	.print-shell,
+	.print-main {
+		display: block !important;
+		height: auto !important;
+		overflow: visible !important;
+		padding: 0 !important;
+		background: transparent !important;
+	}
+
+	/* Presentation: one landscape page, slide scaled to A4 width (297mm ≈ 1122px). */
+	.slide-stage {
+		page: slide;
+		display: flex !important;
+		align-items: center;
+		justify-content: center;
+		width: 100% !important;
+		height: 100vh !important;
+		padding: 0 !important;
+	}
+
+	.slide-frame {
+		width: calc(1600px * 0.7) !important;
+		height: calc(900px * 0.7) !important;
+		box-shadow: none !important;
+		border: none !important;
+		border-radius: 0 !important;
+	}
+
+	.slide-canvas {
+		transform: scale(0.7) !important;
+	}
+
+	.slide-canvas,
+	.slide-canvas * {
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+
+	/* Document: plain A4 content, browser handles page breaks. */
+	.doc-scroll {
+		padding: 0 !important;
+		overflow: visible !important;
+	}
+
+	.doc-page {
+		width: auto !important;
+		min-height: 0 !important;
+		box-shadow: none !important;
+		border: none !important;
+		padding: 0 !important;
+		margin: 0 !important;
+		background: transparent !important;
+	}
+
+	.doc-content .ProseMirror {
+		min-height: 0;
+	}
+
+	.doc-content h1,
+	.doc-content h2,
+	.doc-content h3 {
+		break-after: avoid;
+	}
+
+	.doc-content table,
+	.doc-content blockquote,
+	.doc-content li {
+		break-inside: avoid;
+	}
+
+	.doc-content th {
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+}
