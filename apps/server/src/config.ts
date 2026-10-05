@@ -16,13 +16,11 @@ const EnvSchema = z.object({
 	HOST: z.string().default("0.0.0.0"),
 	PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 	LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
-	/** Development only: include short redacted text previews in logs. Ignored in production. */
-	LOG_TEXT_PREVIEWS: booleanString,
 	TRUST_PROXY: booleanString,
 
-	DATABASE_PATH: z.string().default(path.join(serverRoot, "data", "app.db")),
-	/** Persist generation transcripts in SQLite for debugging. Off by default. */
-	PERSIST_TRANSCRIPTS: booleanString,
+	DATABASE_PATH: z.string().default(path.join(serverRoot, "data", "interview.db")),
+	/** Utterance audio is kept next to the transcript so every line can be played back. */
+	AUDIO_DIR: z.string().default(path.join(serverRoot, "data", "audio")),
 
 	CODEX_BIN: z.string().default("codex"),
 	CODEX_HOME: z.string().optional(),
@@ -30,6 +28,11 @@ const EnvSchema = z.object({
 	CODEX_RUNTIME_DIR: z.string().default(path.join(serverRoot, ".runtime", "codex-workdir")),
 	CODEX_TURN_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
 	CODEX_MODEL_CACHE_MS: z.coerce.number().int().nonnegative().default(300_000),
+	/** Model used until one is chosen in the UI. Unknown ids fall back to the catalog default. */
+	DEFAULT_MODEL: z
+		.string()
+		.optional()
+		.transform(value => value?.trim() || undefined),
 
 	ASR_URL: z.url().default("http://127.0.0.1:8000"),
 	ASR_LANGUAGE: z.string().default("zh"),
@@ -39,8 +42,11 @@ const EnvSchema = z.object({
 	/** Path to a UTF-8 file with one hotword per line (# starts a comment). */
 	HOTWORDS_FILE: z.string().optional(),
 
-	MAX_AUDIO_MINUTES: z.coerce.number().positive().max(240).default(60),
-	MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(262_144_000),
+	/** Longest single utterance; the browser cuts continuous speech at this length. */
+	MAX_UTTERANCE_SECONDS: z.coerce.number().int().min(5).max(120).default(30),
+	MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(16_777_216),
+	/** Quiet period after the latest utterance before the case is re-analyzed. */
+	ANALYSIS_DEBOUNCE_MS: z.coerce.number().int().nonnegative().default(1_500),
 
 	WEB_DIST_DIR: z.string().default(path.resolve(serverRoot, "..", "web", "dist"))
 });
@@ -57,7 +63,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 	return {
 		...values,
 		isProduction: values.NODE_ENV === "production",
-		LOG_TEXT_PREVIEWS: values.LOG_TEXT_PREVIEWS && values.NODE_ENV !== "production",
 		organizationHotwords: readOrganizationHotwords(values.HOTWORDS, values.HOTWORDS_FILE)
 	};
 }

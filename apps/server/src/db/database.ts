@@ -1,113 +1,126 @@
-import type { Artifact, ArtifactMode, Workspace } from "@innoverse/shared";
+import { lineId, type AnalysisOutput, type CaseSummary, type GapState, type RecordDocument, type Settings, type Speaker, type SpeakerSource, type Utterance } from "@innoverse/shared";
 import Database from "better-sqlite3";
-import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-type ArtifactRow = {
+type CaseRow = {
 	id: string;
-	workspace_id: string;
-	mode: ArtifactMode;
-	content: string;
-	revision: number;
-	codex_thread_id: string | null;
-	warnings: string;
 	created_at: string;
 	updated_at: string;
+	started_at: string | null;
+	version: number;
+	analysis: string | null;
+	analyzed_through: number;
+	gap_states: string;
+	fact_edits: string;
+	record: string;
+	record_revision: number;
+	record_updated_at: string | null;
+	utterance_count: number;
 };
 
-export type ArtifactRecord = Artifact & { codexThreadId: string | null };
-
-export type SaveArtifactInput = {
-	workspaceId: string;
-	mode: ArtifactMode;
-	content: string;
-	warnings: string[];
-	/** Revision the change was based on. 0 means "no artifact existed yet". */
-	baseRevision: number;
-	/** `undefined` keeps the current thread association. */
-	codexThreadId?: string | null;
+type UtteranceRow = {
+	seq: number;
+	started_at: string;
+	duration_ms: number;
+	text: string;
+	speaker: Speaker;
+	speaker_source: SpeakerSource;
+	speaker_uncertain: number;
+	audio_file: string | null;
 };
 
-export type SaveArtifactResult = { ok: true; artifact: ArtifactRecord } | { ok: false; reason: "conflict"; current: ArtifactRecord | null };
+/**
+ * Officer edit of an AI fact. `original` is the AI wording it replaced; block and
+ * sources are kept so the fact survives an analysis pass that drops it.
+ */
+export type FactEdit = { text: string; original: string; blockId: string; sources: string[] };
 
-export type GenerationRecord = {
-	id: string;
-	workspaceId: string;
-	mode: ArtifactMode;
-	continued: boolean;
-	status: "success" | "error";
-	errorCode: string | null;
-	audioDurationMs: number | null;
-	asrDurationMs: number | null;
-	aiDurationMs: number | null;
-	totalDurationMs: number;
-	transcript: string | null;
+export type CaseRecord = {
+	summary: CaseSummary;
+	version: number;
+	analysis: AnalysisOutput | null;
+	analyzedThrough: number;
+	gapStates: Record<string, GapState>;
+	factEdits: Record<string, FactEdit>;
+	record: RecordDocument;
+};
+
+export type UtteranceRecord = Utterance & { audioFile: string | null };
+
+export type NewUtterance = {
+	caseId: string;
+	startedAt: string;
+	durationMs: number;
+	text: string;
+	speaker: Speaker;
+	speakerUncertain: boolean;
 };
 
 const MIGRATIONS: string[] = [
 	`
-	CREATE TABLE workspaces (
-		id TEXT PRIMARY KEY,
-		hotwords TEXT NOT NULL DEFAULT '[]',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+	CREATE TABLE settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
 	);
-	CREATE TABLE artifacts (
+	CREATE TABLE cases (
 		id TEXT PRIMARY KEY,
-		workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-		mode TEXT NOT NULL CHECK (mode IN ('presentation', 'document')),
-		content TEXT NOT NULL,
-		revision INTEGER NOT NULL CHECK (revision > 0),
-		codex_thread_id TEXT,
-		warnings TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
-		UNIQUE (workspace_id, mode)
+		started_at TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		analysis TEXT,
+		analyzed_through INTEGER NOT NULL DEFAULT 0,
+		gap_states TEXT NOT NULL DEFAULT '{}',
+		fact_edits TEXT NOT NULL DEFAULT '{}',
+		record TEXT NOT NULL DEFAULT '',
+		record_revision INTEGER NOT NULL DEFAULT 0,
+		record_updated_at TEXT
 	);
-	CREATE TABLE generations (
-		id TEXT PRIMARY KEY,
-		workspace_id TEXT NOT NULL,
-		mode TEXT NOT NULL,
-		continued INTEGER NOT NULL,
-		status TEXT NOT NULL,
-		error_code TEXT,
-		audio_duration_ms INTEGER,
-		asr_duration_ms INTEGER,
-		ai_duration_ms INTEGER,
-		total_duration_ms INTEGER NOT NULL,
-		transcript TEXT,
-		created_at TEXT NOT NULL
+	CREATE TABLE utterances (
+		case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+		seq INTEGER NOT NULL,
+		started_at TEXT NOT NULL,
+		duration_ms INTEGER NOT NULL,
+		text TEXT NOT NULL,
+		speaker TEXT NOT NULL CHECK (speaker IN ('officer', 'victim')),
+		speaker_source TEXT NOT NULL CHECK (speaker_source IN ('heuristic', 'ai', 'manual')),
+		speaker_uncertain INTEGER NOT NULL DEFAULT 0,
+		audio_file TEXT,
+		created_at TEXT NOT NULL,
+		PRIMARY KEY (case_id, seq)
 	);
-	CREATE INDEX generations_workspace_idx ON generations (workspace_id, created_at);
 	`
 ];
 
-function parseStringArray(json: string): string[] {
+function parseObject<T>(json: string | null): T | null {
+	if (!json) return null;
 	try {
 		const value: unknown = JSON.parse(json);
-		return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+		return value && typeof value === "object" ? (value as T) : null;
 	} catch {
-		return [];
+		return null;
 	}
 }
 
-function toRecord(row: ArtifactRow): ArtifactRecord {
+function toUtterance(row: UtteranceRow): UtteranceRecord {
 	return {
-		mode: row.mode,
-		content: row.content,
-		revision: row.revision,
-		warnings: parseStringArray(row.warnings),
-		updatedAt: row.updated_at,
-		codexThreadId: row.codex_thread_id
+		id: lineId(row.seq),
+		seq: row.seq,
+		startedAt: row.started_at,
+		durationMs: row.duration_ms,
+		text: row.text,
+		speaker: row.speaker,
+		speakerSource: row.speaker_source,
+		speakerUncertain: row.speaker_uncertain === 1,
+		hasAudio: row.audio_file !== null,
+		audioFile: row.audio_file
 	};
 }
 
-export function toPublicArtifact(record: ArtifactRecord): Artifact {
-	return { mode: record.mode, content: record.content, revision: record.revision, warnings: record.warnings, updatedAt: record.updatedAt };
-}
+const CASE_SELECT = `SELECT c.*, (SELECT COUNT(*) FROM utterances u WHERE u.case_id = c.id) AS utterance_count FROM cases c`;
 
-/** Compact SQLite persistence. Never stores audio or Codex credentials. */
+/** SQLite persistence for cases, utterances and settings. Audio files live on disk (AUDIO_DIR). */
 export class AppDatabase {
 	private readonly db: Database.Database;
 
@@ -138,93 +151,177 @@ export class AppDatabase {
 		if (this.db.open) this.db.close();
 	}
 
-	ensureWorkspace(workspaceId: string): void {
-		const now = new Date().toISOString();
-		this.db.prepare("INSERT INTO workspaces (id, created_at, updated_at) VALUES (?, ?, ?) ON CONFLICT (id) DO NOTHING").run(workspaceId, now, now);
-	}
+	/* ---------- settings ---------- */
 
-	getWorkspace(workspaceId: string): Workspace {
-		const workspace = this.db.prepare("SELECT hotwords FROM workspaces WHERE id = ?").get(workspaceId) as { hotwords: string } | undefined;
-		const presentation = this.getArtifact(workspaceId, "presentation");
-		const document = this.getArtifact(workspaceId, "document");
+	getSettings(): Settings {
+		const rows = this.db.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
+		const map = new Map(rows.map(row => [row.key, row.value]));
+		const hotwords = parseObject<unknown[]>(map.get("hotwords") ?? null);
 		return {
-			id: workspaceId,
-			artifacts: {
-				presentation: presentation ? toPublicArtifact(presentation) : null,
-				document: document ? toPublicArtifact(document) : null
-			},
-			hotwords: workspace ? parseStringArray(workspace.hotwords) : []
+			model: map.get("model") ?? null,
+			reasoningEffort: map.get("reasoningEffort") ?? null,
+			hotwords: Array.isArray(hotwords) ? hotwords.filter((item): item is string => typeof item === "string") : []
 		};
 	}
 
-	getHotwords(workspaceId: string): string[] {
-		const row = this.db.prepare("SELECT hotwords FROM workspaces WHERE id = ?").get(workspaceId) as { hotwords: string } | undefined;
-		return row ? parseStringArray(row.hotwords) : [];
-	}
-
-	setHotwords(workspaceId: string, hotwords: string[]): void {
-		this.ensureWorkspace(workspaceId);
-		this.db.prepare("UPDATE workspaces SET hotwords = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(hotwords), new Date().toISOString(), workspaceId);
-	}
-
-	getArtifact(workspaceId: string, mode: ArtifactMode): ArtifactRecord | null {
-		const row = this.db.prepare("SELECT * FROM artifacts WHERE workspace_id = ? AND mode = ?").get(workspaceId, mode) as ArtifactRow | undefined;
-		return row ? toRecord(row) : null;
-	}
-
-	/**
-	 * Optimistic concurrency: the write only succeeds when the stored revision still
-	 * equals `baseRevision`; the new revision is `baseRevision + 1`.
-	 */
-	saveArtifact(input: SaveArtifactInput): SaveArtifactResult {
-		return this.db.transaction((): SaveArtifactResult => {
-			this.ensureWorkspace(input.workspaceId);
-			const now = new Date().toISOString();
-			const warnings = JSON.stringify(input.warnings);
-			let changes: number;
-			if (input.baseRevision === 0) {
-				changes = this.db
-					.prepare(
-						`INSERT INTO artifacts (id, workspace_id, mode, content, revision, codex_thread_id, warnings, created_at, updated_at)
-						VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?) ON CONFLICT (workspace_id, mode) DO NOTHING`
-					)
-					.run(randomUUID(), input.workspaceId, input.mode, input.content, input.codexThreadId ?? null, warnings, now, now).changes;
-			} else {
-				const keepThread = input.codexThreadId === undefined ? 1 : 0;
-				changes = this.db
-					.prepare(
-						`UPDATE artifacts SET content = ?, revision = revision + 1, warnings = ?, updated_at = ?,
-							codex_thread_id = CASE WHEN ? THEN codex_thread_id ELSE ? END
-						WHERE workspace_id = ? AND mode = ? AND revision = ?`
-					)
-					.run(input.content, warnings, now, keepThread, input.codexThreadId ?? null, input.workspaceId, input.mode, input.baseRevision).changes;
+	saveSettings(settings: Settings): void {
+		const upsert = this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value");
+		const remove = this.db.prepare("DELETE FROM settings WHERE key = ?");
+		this.db.transaction(() => {
+			for (const key of ["model", "reasoningEffort"] as const) {
+				const value = settings[key];
+				if (value) upsert.run(key, value);
+				else remove.run(key);
 			}
-			const current = this.getArtifact(input.workspaceId, input.mode);
-			if (changes === 0 || !current) return { ok: false, reason: "conflict", current };
-			this.db.prepare("UPDATE workspaces SET updated_at = ? WHERE id = ?").run(now, input.workspaceId);
-			return { ok: true, artifact: current };
+			upsert.run("hotwords", JSON.stringify(settings.hotwords));
 		})();
 	}
 
-	recordGeneration(record: GenerationRecord): void {
-		this.db
-			.prepare(
-				`INSERT INTO generations (id, workspace_id, mode, continued, status, error_code, audio_duration_ms, asr_duration_ms, ai_duration_ms, total_duration_ms, transcript, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-			)
-			.run(
-				record.id,
-				record.workspaceId,
-				record.mode,
-				record.continued ? 1 : 0,
-				record.status,
-				record.errorCode,
-				record.audioDurationMs === null ? null : Math.round(record.audioDurationMs),
-				record.asrDurationMs === null ? null : Math.round(record.asrDurationMs),
-				record.aiDurationMs === null ? null : Math.round(record.aiDurationMs),
-				Math.round(record.totalDurationMs),
-				record.transcript,
-				new Date().toISOString()
-			);
+	/* ---------- cases ---------- */
+
+	createCase(id: string): CaseRecord {
+		const now = new Date().toISOString();
+		this.db.prepare("INSERT INTO cases (id, created_at, updated_at) VALUES (?, ?, ?)").run(id, now, now);
+		return this.getCase(id) as CaseRecord;
+	}
+
+	listCases(limit = 50): CaseSummary[] {
+		const rows = this.db.prepare(`${CASE_SELECT} ORDER BY c.updated_at DESC LIMIT ?`).all(limit) as CaseRow[];
+		return rows.map(row => this.toCase(row).summary);
+	}
+
+	getCase(id: string): CaseRecord | null {
+		const row = this.db.prepare(`${CASE_SELECT} WHERE c.id = ?`).get(id) as CaseRow | undefined;
+		return row ? this.toCase(row) : null;
+	}
+
+	getVersion(id: string): number | null {
+		const row = this.db.prepare("SELECT version FROM cases WHERE id = ?").get(id) as { version: number } | undefined;
+		return row?.version ?? null;
+	}
+
+	/** Bump the polling version, e.g. when in-memory task status changes. */
+	touch(id: string): void {
+		this.db.prepare("UPDATE cases SET version = version + 1, updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+	}
+
+	private toCase(row: CaseRow): CaseRecord {
+		const analysis = parseObject<AnalysisOutput>(row.analysis);
+		return {
+			summary: {
+				id: row.id,
+				createdAt: row.created_at,
+				updatedAt: row.updated_at,
+				startedAt: row.started_at,
+				fraudType: analysis?.fraudType ?? null,
+				victimName: analysis?.victimName ?? null,
+				utteranceCount: row.utterance_count
+			},
+			version: row.version,
+			analysis,
+			analyzedThrough: row.analyzed_through,
+			gapStates: parseObject<Record<string, GapState>>(row.gap_states) ?? {},
+			factEdits: parseObject<Record<string, FactEdit>>(row.fact_edits) ?? {},
+			record: { content: row.record, revision: row.record_revision, updatedAt: row.record_updated_at }
+		};
+	}
+
+	/* ---------- utterances ---------- */
+
+	addUtterance(input: NewUtterance): UtteranceRecord {
+		return this.db.transaction(() => {
+			const now = new Date().toISOString();
+			const next = this.db.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM utterances WHERE case_id = ?").get(input.caseId) as { seq: number };
+			this.db
+				.prepare(
+					`INSERT INTO utterances (case_id, seq, started_at, duration_ms, text, speaker, speaker_source, speaker_uncertain, created_at)
+					VALUES (?, ?, ?, ?, ?, ?, 'heuristic', ?, ?)`
+				)
+				.run(input.caseId, next.seq, input.startedAt, input.durationMs, input.text, input.speaker, input.speakerUncertain ? 1 : 0, now);
+			this.db.prepare("UPDATE cases SET started_at = COALESCE(started_at, ?), version = version + 1, updated_at = ? WHERE id = ?").run(input.startedAt, now, input.caseId);
+			return this.getUtterance(input.caseId, next.seq) as UtteranceRecord;
+		})();
+	}
+
+	setUtteranceAudio(caseId: string, seq: number, audioFile: string): void {
+		this.db.prepare("UPDATE utterances SET audio_file = ? WHERE case_id = ? AND seq = ?").run(audioFile, caseId, seq);
+	}
+
+	listUtterances(caseId: string): UtteranceRecord[] {
+		const rows = this.db.prepare("SELECT * FROM utterances WHERE case_id = ? ORDER BY seq").all(caseId) as UtteranceRow[];
+		return rows.map(toUtterance);
+	}
+
+	getUtterance(caseId: string, seq: number): UtteranceRecord | null {
+		const row = this.db.prepare("SELECT * FROM utterances WHERE case_id = ? AND seq = ?").get(caseId, seq) as UtteranceRow | undefined;
+		return row ? toUtterance(row) : null;
+	}
+
+	/** Officer correction; never overwritten by later analysis passes. */
+	setManualSpeaker(caseId: string, seq: number, speaker: Speaker): boolean {
+		return this.db.transaction(() => {
+			const changes = this.db.prepare("UPDATE utterances SET speaker = ?, speaker_source = 'manual', speaker_uncertain = 0 WHERE case_id = ? AND seq = ?").run(speaker, caseId, seq).changes;
+			if (changes > 0) this.touch(caseId);
+			return changes > 0;
+		})();
+	}
+
+	/* ---------- analysis ---------- */
+
+	/**
+	 * Store a completed analysis and the AI speaker labels in one transaction.
+	 * Manually corrected speakers are left alone.
+	 */
+	saveAnalysis(caseId: string, analysis: AnalysisOutput, analyzedThrough: number): void {
+		const setSpeaker = this.db.prepare("UPDATE utterances SET speaker = ?, speaker_source = 'ai', speaker_uncertain = ? WHERE case_id = ? AND seq = ? AND speaker_source != 'manual'");
+		this.db.transaction(() => {
+			for (const label of analysis.speakers) {
+				const seq = Number(label.lineId.slice(1));
+				if (Number.isInteger(seq)) setSpeaker.run(label.speaker, label.uncertain ? 1 : 0, caseId, seq);
+			}
+			this.db
+				.prepare("UPDATE cases SET analysis = ?, analyzed_through = ?, version = version + 1, updated_at = ? WHERE id = ?")
+				.run(JSON.stringify(analysis), analyzedThrough, new Date().toISOString(), caseId);
+		})();
+	}
+
+	setGapState(caseId: string, gapId: string, state: GapState): boolean {
+		return this.updateJsonColumn(caseId, "gap_states", (states: Record<string, GapState>) => {
+			if (state === "open") delete states[gapId];
+			else states[gapId] = state;
+		});
+	}
+
+	setFactEdit(caseId: string, factId: string, edit: FactEdit | null): boolean {
+		return this.updateJsonColumn(caseId, "fact_edits", (edits: Record<string, FactEdit>) => {
+			if (edit) edits[factId] = edit;
+			else delete edits[factId];
+		});
+	}
+
+	private updateJsonColumn<T extends object>(caseId: string, column: "gap_states" | "fact_edits", mutate: (value: T) => void): boolean {
+		return this.db.transaction(() => {
+			const row = this.db.prepare(`SELECT ${column} AS value FROM cases WHERE id = ?`).get(caseId) as { value: string } | undefined;
+			if (!row) return false;
+			const value = parseObject<T>(row.value) ?? ({} as T);
+			mutate(value);
+			this.db.prepare(`UPDATE cases SET ${column} = ?, version = version + 1, updated_at = ? WHERE id = ?`).run(JSON.stringify(value), new Date().toISOString(), caseId);
+			return true;
+		})();
+	}
+
+	/* ---------- record document ---------- */
+
+	/** Optimistic concurrency: only writes when the stored revision equals `baseRevision`. */
+	saveRecord(caseId: string, content: string, baseRevision: number): { ok: true; record: RecordDocument } | { ok: false; current: RecordDocument | null } {
+		return this.db.transaction(() => {
+			const now = new Date().toISOString();
+			const changes = this.db
+				.prepare("UPDATE cases SET record = ?, record_revision = record_revision + 1, record_updated_at = ?, version = version + 1, updated_at = ? WHERE id = ? AND record_revision = ?")
+				.run(content, now, now, caseId, baseRevision).changes;
+			const current = this.getCase(caseId)?.record ?? null;
+			if (changes === 0 || !current) return { ok: false as const, current };
+			return { ok: true as const, record: current };
+		})();
 	}
 }

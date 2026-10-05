@@ -24,7 +24,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: AppDependencies
 
 	app.get("/config", async () => {
 		const body: ClientConfig = {
-			maxRecordingSeconds: Math.round(deps.config.MAX_AUDIO_MINUTES * 60),
+			maxUtteranceSeconds: deps.config.MAX_UTTERANCE_SECONDS,
 			maxAudioBytes: deps.config.MAX_AUDIO_BYTES
 		};
 		return body;

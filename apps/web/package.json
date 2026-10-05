@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "vite build && node scripts/check-slide-classes.mjs",
+		"build": "vite build",
 		"dev": "vite",
 		"preview": "vite preview",
 		"test": "vitest run",
@@ -13,7 +13,6 @@
 	"dependencies": {
 		"@innoverse/shared": "workspace:*",
 		"@milkdown/kit": "^7.22.2",
-		"dompurify": "^3.4.16",
 		"lucide-react": "^1.49.0",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",

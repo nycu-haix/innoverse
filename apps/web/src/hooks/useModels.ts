@@ -1,52 +1,55 @@
-import { pickDefaultModel, pickDefaultReasoningEffort, type ModelOption } from "@innoverse/shared";
+import { pickDefaultModel, pickDefaultReasoningEffort, type ModelOption, type Settings } from "@innoverse/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { readPreference, writePreference } from "../lib/storage";
 
-/** Model catalog from Codex (never hardcoded) plus the user's selection. */
-export function useModels(enabled: boolean) {
+/**
+ * Model catalog from Codex (never hardcoded) plus the server-side settings. Analysis
+ * runs on the server without a request from the browser, so the choice lives there.
+ */
+export function useModels() {
 	const [models, setModels] = useState<ModelOption[]>([]);
-	const [loaded, setLoaded] = useState(false);
-	const [modelId, setModelId] = useState<string | null>(() => readPreference("model"));
-	const [effort, setEffort] = useState<string | null>(() => readPreference("reasoningEffort"));
+	const [defaultModel, setDefaultModel] = useState<string | null>(null);
+	const [settings, setSettings] = useState<Settings>({ model: null, reasoningEffort: null, hotwords: [] });
 
 	useEffect(() => {
-		if (!enabled) return;
 		let active = true;
-		api
-			.models()
-			.then(response => {
+		api.models().then(
+			response => {
 				if (!active) return;
 				setModels(response.models);
-				setLoaded(true);
-			})
-			.catch(() => {
-				if (active) setLoaded(true);
-			});
+				setDefaultModel(response.defaultModel);
+			},
+			() => undefined
+		);
+		api.settings().then(
+			response => active && setSettings(response),
+			() => undefined
+		);
 		return () => {
 			active = false;
 		};
-	}, [enabled]);
+	}, []);
 
-	const model = useMemo(() => models.find(candidate => candidate.id === modelId) ?? pickDefaultModel(models), [modelId, models]);
+	const model = useMemo(() => models.find(candidate => candidate.id === (settings.model ?? defaultModel)) ?? pickDefaultModel(models), [models, settings.model, defaultModel]);
 	const reasoningEffort = useMemo(() => {
 		if (!model) return null;
-		if (effort && model.supportedReasoningEfforts.includes(effort)) return effort;
+		if (settings.reasoningEffort && model.supportedReasoningEfforts.includes(settings.reasoningEffort)) return settings.reasoningEffort;
 		return pickDefaultReasoningEffort(model);
-	}, [effort, model]);
+	}, [model, settings.reasoningEffort]);
 
-	const selectModel = useCallback((id: string) => {
-		setModelId(id);
-		writePreference("model", id);
-		// Reset to the cheapest effort of the newly selected model.
-		setEffort(null);
-		writePreference("reasoningEffort", null);
+	const save = useCallback((next: Settings) => {
+		setSettings(next);
+		api.saveSettings(next).then(setSettings, () => undefined);
 	}, []);
 
-	const selectEffort = useCallback((value: string) => {
-		setEffort(value);
-		writePreference("reasoningEffort", value);
-	}, []);
-
-	return { models, loaded, model, reasoningEffort, selectModel, selectEffort };
+	return {
+		models,
+		model,
+		reasoningEffort,
+		hotwords: settings.hotwords,
+		// Changing the model resets the effort to that model's cheapest option.
+		selectModel: (id: string) => save({ ...settings, model: id, reasoningEffort: null }),
+		selectEffort: (effort: string) => save({ ...settings, reasoningEffort: effort }),
+		saveHotwords: (hotwords: string[]) => save({ ...settings, hotwords })
+	};
 }

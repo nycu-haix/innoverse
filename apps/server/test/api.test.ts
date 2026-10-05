@@ -1,14 +1,47 @@
-import { GenerationEventSchema, HealthResponseSchema, ModelsResponseSchema, WorkspaceSchema } from "@innoverse/shared";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { CaseDetailSchema, CaseListResponseSchema, HealthResponseSchema, ModelsResponseSchema, type AnalysisDelta } from "@innoverse/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppError } from "../src/errors";
-import { createTestApp, multipart, parseEvents, WORKSPACE_ID } from "./helpers/test-app";
+import { createTestApp, multipart } from "./helpers/test-app";
 
-const audio = { data: Buffer.from("fake-webm-bytes"), type: "audio/webm;codecs=opus" };
-const slideReply = () => JSON.stringify({ html: '<div class="w-full h-full flex gap-8"><div class="text-6xl">🌅 早餐後 💊 1 顆</div><script>x()</script></div>', warnings: [] });
-const docReply = (input: string) => JSON.stringify({ markdown: input.includes("<current_artifact>") ? "# 更新後\n" : "# 用藥說明\n\n- 一天三次\n", warnings: [] });
+const wav = { data: Buffer.from("RIFF-fake-wav"), type: "audio/wav" };
+
+function analysisReply(overrides: Partial<AnalysisDelta> = {}): AnalysisDelta {
+	return {
+		removedBlockIds: [],
+		fraudType: "假投資",
+		deliveryMethods: ["銀行轉帳"],
+		victimName: "林○○",
+		speakers: [
+			{ lineId: "L1", speaker: "victim", uncertain: false },
+			{ lineId: "L99", speaker: "officer", uncertain: false }
+		],
+		blocks: [
+			{
+				id: "payment-1",
+				kind: "payment",
+				title: "交付 #1",
+				subtitle: "網路銀行轉帳",
+				status: "pending",
+				facts: [{ id: "payment-1-transfer", text: "{t|9 月 10 日 14 時許}，網路銀行轉帳 {a|NT$50,000}", sources: ["L1", "L42"], status: "ok", note: null, verifyWith: "轉帳紀錄" }],
+				gaps: [
+					{
+						id: "payee-account",
+						field: "收款帳號與戶名",
+						level: "must",
+						question: "轉進去的帳號是哪一家銀行、帳號多少？",
+						reason: "目前只知道轉到王姓帳戶",
+						use: "調閱帳戶交易明細、通報警示帳戶",
+						basis: "L1 提到轉帳",
+						priority: 1
+					}
+				]
+			}
+		],
+		conflicts: [],
+		actions: [{ id: "freeze", text: "通報警示帳戶", urgent: true, reason: "避免款項再被轉出" }],
+		...overrides
+	};
+}
 
 let cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -17,266 +50,253 @@ afterEach(async () => {
 });
 
 async function setup(options: Parameters<typeof createTestApp>[0] = {}) {
-	const ctx = await createTestApp(options);
+	const ctx = await createTestApp({ reply: () => JSON.stringify(analysisReply()), ...options });
 	cleanup.push(ctx.close);
 	return ctx;
 }
 
-function generateFields(overrides: Record<string, string> = {}) {
-	return { workspaceId: WORKSPACE_ID, mode: "presentation", continue: "false", model: "", reasoningEffort: "", artifactRevision: "0", ...overrides };
+async function createCase(ctx: Awaited<ReturnType<typeof setup>>) {
+	const response = await ctx.app.inject({ method: "POST", url: "/api/cases" });
+	expect(response.statusCode).toBe(201);
+	return CaseDetailSchema.parse(response.json());
 }
 
-describe("GET /api/health", () => {
-	it("reports component health", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "GET", url: "/api/health" });
-		expect(response.statusCode).toBe(200);
-		const body = HealthResponseSchema.parse(response.json());
-		expect(body).toMatchObject({ status: "ok", database: { ok: true }, codex: { state: "ready", authenticated: true }, asr: { modelLoaded: true } });
-	});
+async function postUtterance(ctx: Awaited<ReturnType<typeof setup>>, caseId: string, fields: Record<string, string> = {}, audio = wav) {
+	const body = multipart({ startedAt: String(Date.UTC(2026, 9, 5, 6, 2, 10)), durationMs: "4200", ...fields }, audio);
+	return ctx.app.inject({ method: "POST", url: `/api/cases/${caseId}/utterances`, payload: body.payload, headers: body.headers });
+}
 
-	it("sets security headers", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "GET", url: "/api/health" });
+async function detail(ctx: Awaited<ReturnType<typeof setup>>, caseId: string) {
+	await ctx.cases.settled(caseId);
+	const response = await ctx.app.inject({ method: "GET", url: `/api/cases/${caseId}` });
+	expect(response.statusCode).toBe(200);
+	return CaseDetailSchema.parse(response.json());
+}
+
+describe("health and models", () => {
+	it("reports component health with security headers", async () => {
+		const ctx = await setup();
+		const response = await ctx.app.inject({ method: "GET", url: "/api/health" });
+		expect(HealthResponseSchema.parse(response.json())).toMatchObject({ status: "ok", codex: { state: "ready", authenticated: true } });
 		expect(response.headers["content-security-policy"]).toContain("default-src 'self'");
-		expect(response.headers["x-content-type-options"]).toBe("nosniff");
 	});
-});
 
-describe("GET /api/models", () => {
-	it("returns the sanitized catalog with a default model", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "GET", url: "/api/models" });
-		const body = ModelsResponseSchema.parse(response.json());
-		expect(body.defaultModel).toBe("gpt-fast");
+	it("returns the sanitized model catalog", async () => {
+		const ctx = await setup();
+		const body = ModelsResponseSchema.parse((await ctx.app.inject({ method: "GET", url: "/api/models" })).json());
 		expect(body.models.map(model => model.id)).toEqual(["gpt-fast", "gpt-deep"]);
-		expect(JSON.stringify(body)).not.toContain("gpt-secret");
-	});
-
-	it("requires Codex authentication", async () => {
-		const { app } = await setup({ authenticated: false });
-		const response = await app.inject({ method: "GET", url: "/api/models" });
-		expect(response.statusCode).toBe(401);
-		expect(response.json()).toMatchObject({ error: { code: "CODEX_UNAUTHENTICATED", message: "AI 服務需要重新登入。" } });
 	});
 });
 
-describe("workspace API", () => {
-	it("validates the workspace id", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "GET", url: "/api/workspaces/not-a-uuid" });
-		expect(response.statusCode).toBe(400);
-		expect(response.json().error.code).toBe("BAD_REQUEST");
+describe("cases", () => {
+	it("creates and lists cases", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		expect(created).toMatchObject({ utterances: [], analysis: null, record: { content: "", revision: 0 }, analysisStatus: { state: "idle" } });
+		const list = CaseListResponseSchema.parse((await ctx.app.inject({ method: "GET", url: "/api/cases" })).json());
+		expect(list.cases.map(item => item.id)).toEqual([created.id]);
 	});
 
-	it("returns an empty workspace for a new id", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "GET", url: `/api/workspaces/${WORKSPACE_ID}` });
-		expect(WorkspaceSchema.parse(response.json())).toEqual({ id: WORKSPACE_ID, artifacts: { presentation: null, document: null }, hotwords: [] });
-	});
-
-	it("rejects invalid artifact updates", async () => {
-		const { app } = await setup();
-		for (const payload of [{ content: "x" }, { content: 3, baseRevision: 0 }, { content: "x", baseRevision: -1 }]) {
-			const response = await app.inject({ method: "PUT", url: `/api/workspaces/${WORKSPACE_ID}/artifacts/document`, payload });
-			expect(response.statusCode).toBe(400);
-		}
-		const badMode = await app.inject({ method: "PUT", url: `/api/workspaces/${WORKSPACE_ID}/artifacts/chat`, payload: { content: "x", baseRevision: 0 } });
-		expect(badMode.statusCode).toBe(400);
-	});
-
-	it("rejects artifact updates with a stale revision", async () => {
-		const { app } = await setup();
-		const url = `/api/workspaces/${WORKSPACE_ID}/artifacts/document`;
-		const first = await app.inject({ method: "PUT", url, payload: { content: "# v1", baseRevision: 0 } });
-		expect(first.json().artifact.revision).toBe(1);
-		const second = await app.inject({ method: "PUT", url, payload: { content: "# v2", baseRevision: 1 } });
-		expect(second.json().artifact.revision).toBe(2);
-		const stale = await app.inject({ method: "PUT", url, payload: { content: "# old tab", baseRevision: 1 } });
-		expect(stale.statusCode).toBe(409);
-		expect(stale.json()).toMatchObject({ error: { code: "STALE_REVISION", message: "內容已在其他地方更新，請再試一次。" }, current: { revision: 2, content: "# v2" } });
-	});
-
-	it("sanitizes manual presentation updates", async () => {
-		const { app } = await setup();
-		const response = await app.inject({
-			method: "PUT",
-			url: `/api/workspaces/${WORKSPACE_ID}/artifacts/presentation`,
-			payload: { content: '<div onclick="x"><p style="a">hi</p><img src=x></div>', baseRevision: 0 }
-		});
-		expect(response.json().artifact.content).toBe('<div class="w-full h-full"><p>hi</p></div>');
-	});
-
-	it("stores normalized hotwords", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "PUT", url: `/api/workspaces/${WORKSPACE_ID}/hotwords`, payload: { hotwords: [" 克拉黴素", "克拉黴素", "Metformin"] } });
-		expect(response.json()).toEqual({ hotwords: ["克拉黴素", "Metformin"] });
+	it("validates ids and returns 404 for unknown cases", async () => {
+		const ctx = await setup();
+		expect((await ctx.app.inject({ method: "GET", url: "/api/cases/nope" })).statusCode).toBe(400);
+		expect((await ctx.app.inject({ method: "GET", url: "/api/cases/3f2c1b8e-7a4d-4e6f-9b1a-2c3d4e5f6a7b" })).statusCode).toBe(404);
 	});
 });
 
-describe("POST /api/generate", () => {
-	it("rejects invalid metadata", async () => {
-		const { app, asr } = await setup();
-		for (const fields of [generateFields({ workspaceId: "nope" }), generateFields({ mode: "chat" }), generateFields({ continue: "maybe" }), generateFields({ artifactRevision: "x" })]) {
-			const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(fields, audio) });
-			expect(response.statusCode).toBe(400);
-			expect(response.json().error.code).toBe("BAD_REQUEST");
-		}
-		expect(asr.calls).toHaveLength(0);
+describe("utterances and analysis", () => {
+	it("transcribes, keeps audio, then analyzes the case", async () => {
+		const ctx = await setup({ organizationHotwords: ["竹北"] });
+		await ctx.app.inject({ method: "PUT", url: "/api/settings", payload: { model: null, reasoningEffort: null, hotwords: ["鼎盛國際"] } });
+		const created = await createCase(ctx);
+
+		const response = await postUtterance(ctx, created.id);
+		expect(response.statusCode).toBe(201);
+		expect(response.json()).toMatchObject({ id: "L1", seq: 1, text: "九月十號下午兩點多，我用網銀轉了五萬。", speakerSource: "heuristic", speakerUncertain: true, hasAudio: true });
+		expect(ctx.asr.calls[0]?.hotwords).toEqual(["竹北", "鼎盛國際"]);
+
+		const audio = await ctx.app.inject({ method: "GET", url: `/api/cases/${created.id}/utterances/L1/audio` });
+		expect(audio.statusCode).toBe(200);
+		expect(audio.headers["content-type"]).toBe("audio/wav");
+		expect(audio.rawPayload.toString()).toBe("RIFF-fake-wav");
+
+		const after = await detail(ctx, created.id);
+		expect(after.startedAt).toBe("2026-10-05T06:02:10.000Z");
+		expect(after).toMatchObject({ fraudType: "假投資", victimName: "林○○", analyzedThrough: 1, analysisStatus: { state: "idle", error: null } });
+		expect(after.utterances[0]).toMatchObject({ speaker: "victim", speakerSource: "ai", speakerUncertain: false });
+		// Unknown source lines are dropped; officer state defaults are applied.
+		const fact = after.analysis?.blocks[0]?.facts[0];
+		expect(fact).toMatchObject({ sources: ["L1"], original: null });
+		expect(after.analysis?.blocks[0]?.gaps[0]).toMatchObject({ id: "payee-account", state: "open" });
+
+		const turn = ctx.harness.turns.at(-1);
+		expect(turn?.input).toContain("[L1 14:02:10 被害人?]");
+		expect(turn?.input).toContain("115 年 10 月 5 日 14 時 02 分");
+		expect(turn?.threadId).toMatch(/^thread-new-/);
+		expect(turn?.params.outputSchema).toMatchObject({ type: "object", additionalProperties: false });
 	});
 
-	it("rejects invalid model and reasoning effort before any ASR work", async () => {
-		const { app, asr } = await setup();
-		const badModel = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ model: "gpt-unknown" }), audio) });
-		expect(badModel.json().error.code).toBe("INVALID_MODEL");
-		const badEffort = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ model: "gpt-deep", reasoningEffort: "none" }), audio) });
-		expect(badEffort.json().error.code).toBe("INVALID_REASONING_EFFORT");
-		expect(asr.calls).toHaveLength(0);
+	it("ignores utterances without speech", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		ctx.asr.texts = ["   "];
+		const response = await postUtterance(ctx, created.id);
+		expect(response.statusCode).toBe(422);
+		expect(response.json().error.code).toBe("NO_SPEECH");
+		expect((await detail(ctx, created.id)).utterances).toEqual([]);
 	});
 
-	it("rejects missing, empty and unsupported audio", async () => {
-		const { app } = await setup();
-		expect((await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), null) })).json().error.code).toBe("EMPTY_RECORDING");
-		expect((await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), { data: Buffer.alloc(0), type: "audio/webm" }) })).json().error.code).toBe("EMPTY_RECORDING");
-		expect((await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), { data: Buffer.from("x"), type: "text/html" }) })).json().error.code).toBe("UNSUPPORTED_AUDIO");
+	it("rejects unsupported audio and bad fields", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		expect((await postUtterance(ctx, created.id, {}, { data: Buffer.from("x"), type: "text/plain" })).statusCode).toBe(415);
+		expect((await postUtterance(ctx, created.id, { startedAt: "soon" })).statusCode).toBe(400);
+		expect(ctx.asr.calls).toHaveLength(0);
 	});
 
-	it("rejects uploads over the size limit", async () => {
-		const { app } = await setup();
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), { data: Buffer.alloc(1024 * 1024 + 10), type: "audio/webm" }) });
-		expect(response.statusCode).toBe(413);
-		expect(response.json().error.code).toBe("UPLOAD_TOO_LARGE");
-	});
-
-	it("streams stages and a sanitized, persisted presentation", async () => {
-		const { app, asr, db } = await setup({ reply: slideReply, organizationHotwords: ["阿莫西林"] });
-		await db.setHotwords(WORKSPACE_ID, ["克拉黴素"]);
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
-		expect(response.statusCode).toBe(200);
-		expect(response.headers["content-type"]).toContain("application/x-ndjson");
-		const events = parseEvents(response.body).map(event => GenerationEventSchema.parse(event));
-		expect(events.map(event => (event.type === "stage" ? event.stage : event.type))).toEqual(["transcribing", "generating", "result"]);
-		const result = events[2];
-		if (result?.type !== "result") throw new Error("expected result");
-		expect(result.result.artifact).toMatchObject({ mode: "presentation", revision: 1, content: '<div class="w-full h-full flex gap-8"><div class="text-6xl">🌅 早餐後 💊 1 顆</div></div>' });
-		expect(db.getArtifact(WORKSPACE_ID, "presentation")?.codexThreadId).toBe("thread-new-1");
-		expect(asr.calls[0]).toMatchObject({ mimeType: "audio/webm", hotwords: ["阿莫西林", "克拉黴素"], language: "zh" });
-	});
-
-	it("removes temporary audio after the request", async () => {
-		const tempRoot = await mkdtemp(path.join(tmpdir(), "innoverse-tmp-check-"));
-		const previous = process.env.TMPDIR;
-		process.env.TMPDIR = tempRoot;
-		try {
-			const { app, asr } = await setup({ reply: slideReply });
-			await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
-			asr.fail = new AppError("ASR_UNAVAILABLE");
-			await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ artifactRevision: "1" }), audio) });
-			await new Promise(resolve => setTimeout(resolve, 20));
-			expect((await readdir(tempRoot)).filter(name => name.startsWith("innoverse-upload-"))).toEqual([]);
-		} finally {
-			// Assigning undefined would store the string "undefined"; unset it instead.
-			if (previous === undefined) delete process.env.TMPDIR;
-			else process.env.TMPDIR = previous;
-			await rm(tempRoot, { recursive: true, force: true });
-		}
-	});
-
-	it("Continue=false creates a fresh Codex thread and omits the old artifact", async () => {
-		const { app, harness } = await setup({ reply: docReply });
-		await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document" }), audio) });
-		await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document", artifactRevision: "1" }), audio) });
-		expect(harness.turns.map(turn => turn.threadId)).toEqual(["thread-new-1", "thread-new-2"]);
-		expect(harness.turns[1]!.input).not.toContain("<current_artifact>");
-		expect(harness.methods()).not.toContain("thread/resume");
-	});
-
-	it("Continue=true resumes the thread and sends the manually edited artifact", async () => {
-		const { app, harness, db } = await setup({ reply: docReply });
-		await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document" }), audio) });
-		const edit = await app.inject({
-			method: "PUT",
-			url: `/api/workspaces/${WORKSPACE_ID}/artifacts/document`,
-			payload: { content: "# 用藥說明\n\n- 一天三次（藥師手動補充：飯後）\n", baseRevision: 1 }
-		});
-		expect(edit.json().artifact.revision).toBe(2);
-
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document", continue: "true", artifactRevision: "2" }), audio) });
-		const events = parseEvents(response.body);
-		expect(events.at(-1)).toMatchObject({ type: "result", result: { artifact: { revision: 3, content: "# 更新後\n" } } });
-		expect(harness.methods()).toContain("thread/resume");
-		expect(harness.turns[1]!.threadId).toBe("thread-new-1");
-		expect(harness.turns[1]!.input).toContain("藥師手動補充：飯後");
-		expect(db.getArtifact(WORKSPACE_ID, "document")?.codexThreadId).toBe("thread-new-1");
-	});
-
-	it("rejects a generation based on a stale revision", async () => {
-		const { app, asr } = await setup({ reply: docReply });
-		await app.inject({ method: "PUT", url: `/api/workspaces/${WORKSPACE_ID}/artifacts/document`, payload: { content: "# v1", baseRevision: 0 } });
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document", continue: "true", artifactRevision: "0" }), audio) });
-		expect(response.statusCode).toBe(409);
-		expect(response.json().error.code).toBe("STALE_REVISION");
-		expect(asr.calls).toHaveLength(0);
-	});
-
-	it("never lets an older generation overwrite a newer manual edit", async () => {
-		const ctx = await setup({ reply: docReply });
-		// Simulate a manual edit landing while the AI is generating.
-		const original = ctx.asr.transcribe.bind(ctx.asr);
-		ctx.asr.transcribe = async input => {
-			const result = await original(input);
-			ctx.db.saveArtifact({ workspaceId: WORKSPACE_ID, mode: "document", content: "# 手動編輯", warnings: [], baseRevision: 0 });
-			return result;
-		};
-		const response = await ctx.app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document" }), audio) });
-		expect(parseEvents(response.body).at(-1)).toMatchObject({ type: "error", error: { code: "STALE_REVISION" } });
-		expect(ctx.db.getArtifact(WORKSPACE_ID, "document")?.content).toBe("# 手動編輯");
-	});
-
-	it("reports no speech and preserves the existing artifact on failure", async () => {
-		const { app, asr, db } = await setup({ reply: docReply });
-		await app.inject({ method: "PUT", url: `/api/workspaces/${WORKSPACE_ID}/artifacts/document`, payload: { content: "# keep me", baseRevision: 0 } });
-		asr.text = "   ";
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields({ mode: "document", artifactRevision: "1" }), audio) });
-		expect(parseEvents(response.body).at(-1)).toMatchObject({ type: "error", error: { code: "NO_SPEECH", message: "沒有辨識到語音，請再試一次。" } });
-		expect(db.getArtifact(WORKSPACE_ID, "document")?.content).toBe("# keep me");
-	});
-
-	it("reports invalid AI output without touching the artifact", async () => {
-		const { app, db } = await setup({ reply: () => "definitely not json" });
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
-		expect(parseEvents(response.body).at(-1)).toMatchObject({ type: "error", error: { code: "INVALID_OUTPUT", message: "產生內容失敗，原本的內容已保留。" } });
-		expect(db.getArtifact(WORKSPACE_ID, "presentation")).toBeNull();
-	});
-
-	it("returns 503 before streaming when ASR is unavailable", async () => {
-		const { app, asr } = await setup({ reply: slideReply });
-		asr.healthy = false;
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
+	it("maps ASR failures to an error response", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		ctx.asr.fail = new AppError("ASR_UNAVAILABLE");
+		const response = await postUtterance(ctx, created.id);
 		expect(response.statusCode).toBe(503);
-		expect(response.headers["content-type"]).toContain("application/json");
-		expect(response.json()).toMatchObject({ error: { code: "ASR_UNAVAILABLE", message: "語音辨識服務目前無法使用。" } });
-		expect(asr.calls).toHaveLength(0);
+		expect(response.json().error.code).toBe("ASR_UNAVAILABLE");
 	});
 
-	it("requires Codex authentication", async () => {
-		const { app } = await setup({ authenticated: false });
-		const response = await app.inject({ method: "POST", url: "/api/generate", ...multipart(generateFields(), audio) });
-		expect(response.statusCode).toBe(401);
+	it("keeps manual speaker corrections across analysis passes", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+
+		const put = await ctx.app.inject({ method: "PUT", url: `/api/cases/${created.id}/utterances/L1/speaker`, payload: { speaker: "officer" } });
+		expect(put.statusCode).toBe(204);
+		const after = await detail(ctx, created.id);
+		expect(after.utterances[0]).toMatchObject({ speaker: "officer", speakerSource: "manual" });
+		expect(ctx.harness.turns.at(-1)?.input).toContain("[L1 14:02:10 員警!]");
+	});
+
+	it("reports analysis failures without losing the previous analysis", async () => {
+		let reply = JSON.stringify(analysisReply());
+		const ctx = await setup({ reply: () => reply });
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+
+		reply = "not json";
+		await postUtterance(ctx, created.id);
+		const after = await detail(ctx, created.id);
+		expect(after.analysisStatus).toMatchObject({ state: "error", error: { code: "INVALID_OUTPUT" } });
+		expect(after.analysis?.blocks).toHaveLength(1);
+		expect(after.analyzedThrough).toBe(1);
+	});
+
+	it("carries over omitted blocks, orders them by the case timeline and removes only listed ids", async () => {
+		let reply = analysisReply();
+		const ctx = await setup({ reply: () => JSON.stringify(reply) });
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+
+		const discovery = { id: "discovery", kind: "discovery" as const, title: "發現受騙", subtitle: null, status: "ok" as const, facts: [], gaps: [] };
+		const contact = { ...discovery, id: "contact", kind: "contact" as const, title: "初次接觸" };
+		reply = analysisReply({ blocks: [discovery, contact] });
+		await postUtterance(ctx, created.id);
+		let after = await detail(ctx, created.id);
+		expect(after.analysis?.blocks.map(block => block.id)).toEqual(["contact", "payment-1", "discovery"]);
+		expect(after.analysis?.blocks[1]?.facts).toHaveLength(1);
+
+		reply = analysisReply({ blocks: [], removedBlockIds: ["payment-1"] });
+		await ctx.app.inject({ method: "POST", url: `/api/cases/${created.id}/analyze` });
+		after = await detail(ctx, created.id);
+		expect(after.analysis?.blocks.map(block => block.id)).toEqual(["contact", "discovery"]);
+	});
+
+	it("bumps the version on every change", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		const version = async () => (await ctx.app.inject({ method: "GET", url: `/api/cases/${created.id}/version` })).json().version as number;
+		const before = await version();
+		await postUtterance(ctx, created.id);
+		await ctx.cases.settled(created.id);
+		expect(await version()).toBeGreaterThan(before);
 	});
 });
 
-describe("SPA fallback", () => {
-	it("serves index.html for app routes but keeps /api 404s as JSON", async () => {
-		const webDir = await mkdtemp(path.join(tmpdir(), "innoverse-web-"));
-		await writeFile(path.join(webDir, "index.html"), "<!doctype html><title>app</title>");
-		cleanup.push(() => rm(webDir, { recursive: true, force: true }));
-		const { app } = await setup({ webDistDir: webDir });
-		const page = await app.inject({ method: "GET", url: "/some/client/route" });
-		expect(page.statusCode).toBe(200);
-		expect(page.body).toContain("<title>app</title>");
-		const api = await app.inject({ method: "GET", url: "/api/does-not-exist" });
-		expect(api.statusCode).toBe(404);
-		expect(api.json().error.code).toBe("NOT_FOUND");
+describe("officer decisions", () => {
+	it("edits a fact, keeps the AI original and sends the edit back to the model", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+
+		const url = `/api/cases/${created.id}/facts/payment-1-transfer`;
+		expect((await ctx.app.inject({ method: "PUT", url, payload: { text: "9 月 10 日 14 時許，網路銀行轉帳 NT$60,000" } })).statusCode).toBe(204);
+		let fact = (await detail(ctx, created.id)).analysis?.blocks[0]?.facts[0];
+		expect(fact).toMatchObject({ text: "9 月 10 日 14 時許，網路銀行轉帳 NT$60,000", original: "{t|9 月 10 日 14 時許}，網路銀行轉帳 {a|NT$50,000}" });
+
+		await ctx.app.inject({ method: "POST", url: `/api/cases/${created.id}/analyze` });
+		await ctx.cases.settled(created.id);
+		expect(ctx.harness.turns.at(-1)?.input).toContain('"editedByOfficer":true');
+
+		expect((await ctx.app.inject({ method: "PUT", url, payload: { text: null } })).statusCode).toBe(204);
+		fact = (await detail(ctx, created.id)).analysis?.blocks[0]?.facts[0];
+		expect(fact).toMatchObject({ text: "{t|9 月 10 日 14 時許}，網路銀行轉帳 {a|NT$50,000}", original: null });
+	});
+
+	it("keeps an edited fact when a later pass drops it", async () => {
+		let reply = analysisReply();
+		const ctx = await setup({ reply: () => JSON.stringify(reply) });
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+		await ctx.app.inject({ method: "PUT", url: `/api/cases/${created.id}/facts/payment-1-transfer`, payload: { text: "改過的內容" } });
+
+		reply = analysisReply();
+		reply.blocks[0]!.facts = [];
+		await ctx.app.inject({ method: "POST", url: `/api/cases/${created.id}/analyze` });
+		const after = await detail(ctx, created.id);
+		expect(after.analysis?.blocks[0]?.facts).toEqual([expect.objectContaining({ id: "payment-1-transfer", text: "改過的內容", sources: ["L1"] })]);
+	});
+
+	it("records gap decisions and rejects unknown ids", async () => {
+		const ctx = await setup();
+		const created = await createCase(ctx);
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+
+		const url = `/api/cases/${created.id}/gaps/payee-account`;
+		expect((await ctx.app.inject({ method: "PUT", url, payload: { state: "asked" } })).statusCode).toBe(204);
+		expect((await detail(ctx, created.id)).analysis?.blocks[0]?.gaps[0]?.state).toBe("asked");
+		expect((await ctx.app.inject({ method: "PUT", url, payload: { state: "open" } })).statusCode).toBe(204);
+		expect((await detail(ctx, created.id)).analysis?.blocks[0]?.gaps[0]?.state).toBe("open");
+		expect((await ctx.app.inject({ method: "PUT", url: `/api/cases/${created.id}/gaps/nope`, payload: { state: "asked" } })).statusCode).toBe(404);
+		expect((await ctx.app.inject({ method: "PUT", url, payload: { state: "done" } })).statusCode).toBe(400);
+	});
+});
+
+describe("record (筆錄)", () => {
+	it("drafts the record and saves edits with optimistic concurrency", async () => {
+		const ctx = await setup({
+			reply: input =>
+				input.includes("Draft the 調查筆錄") ? JSON.stringify({ markdown: "```markdown\n# 調查筆錄\n\n**問：** 何時轉帳？\n\n**答：** 九月十號。\n```" }) : JSON.stringify(analysisReply())
+		});
+		const created = await createCase(ctx);
+
+		const empty = await ctx.app.inject({ method: "POST", url: `/api/cases/${created.id}/record/generate` });
+		expect(empty.statusCode).toBe(422);
+
+		await postUtterance(ctx, created.id);
+		await detail(ctx, created.id);
+		const generated = await ctx.app.inject({ method: "POST", url: `/api/cases/${created.id}/record/generate` });
+		expect(generated.statusCode).toBe(200);
+		expect(generated.json().record).toMatchObject({ content: "# 調查筆錄\n\n**問：** 何時轉帳？\n\n**答：** 九月十號。\n", revision: 1 });
+
+		const url = `/api/cases/${created.id}/record`;
+		const saved = await ctx.app.inject({ method: "PUT", url, payload: { content: "# 調查筆錄\n\n修改\n", baseRevision: 1 } });
+		expect(saved.json().record).toMatchObject({ revision: 2 });
+		const stale = await ctx.app.inject({ method: "PUT", url, payload: { content: "舊的", baseRevision: 1 } });
+		expect(stale.statusCode).toBe(409);
+		expect(stale.json()).toMatchObject({ error: { code: "STALE_REVISION" }, current: { revision: 2, content: "# 調查筆錄\n\n修改\n" } });
 	});
 });

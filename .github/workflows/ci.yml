@@ -37,8 +37,7 @@ jobs:
 
       - run: pnpm test
 
-      - name: Build (web + server, verifies slide class safelist)
-        run: pnpm build
+      - run: pnpm build
 
   python:
     name: ASR service (ruff, pytest)

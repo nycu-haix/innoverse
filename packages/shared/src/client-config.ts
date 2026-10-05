@@ -2,7 +2,8 @@ import { z } from "zod";
 
 /** Non-secret runtime settings the browser needs. */
 export const ClientConfigSchema = z.object({
-	maxRecordingSeconds: z.number().int().positive(),
+	/** Longest single utterance the browser may upload before it is cut. */
+	maxUtteranceSeconds: z.number().int().positive(),
 	maxAudioBytes: z.number().int().positive()
 });
 export type ClientConfig = z.infer<typeof ClientConfigSchema>;

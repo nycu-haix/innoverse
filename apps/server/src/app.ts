@@ -7,34 +7,34 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { AsrProvider } from "./asr/asr-client";
+import type { CaseService } from "./cases/case-service";
 import type { CodexService } from "./codex/codex-service";
 import type { Config } from "./config";
 import type { AppDatabase } from "./db/database";
 import { AppError } from "./errors";
-import type { GenerationService } from "./generation/generation-service";
 import { registerAuthRoutes } from "./routes/auth";
-import { registerGenerateRoutes } from "./routes/generate";
+import { registerCaseRoutes } from "./routes/cases";
 import { registerHealthRoutes } from "./routes/health";
 import { registerModelRoutes } from "./routes/models";
-import { registerWorkspaceRoutes } from "./routes/workspaces";
+import { registerSettingsRoutes } from "./routes/settings";
 
 export type CodexFacade = Pick<CodexService, "getAuthStatus" | "startDeviceLogin" | "cancelLogin" | "logout" | "listModels" | "isAuthenticated"> & {
 	readonly processState: string;
 };
 
 export type AppDependencies = {
-	config: Pick<Config, "MAX_AUDIO_BYTES" | "MAX_AUDIO_MINUTES" | "WEB_DIST_DIR" | "TRUST_PROXY" | "isProduction">;
+	config: Pick<Config, "MAX_AUDIO_BYTES" | "MAX_UTTERANCE_SECONDS" | "WEB_DIST_DIR" | "TRUST_PROXY" | "isProduction" | "DEFAULT_MODEL">;
 	db: AppDatabase;
 	asr: AsrProvider;
 	codex: CodexFacade;
-	generation: GenerationService;
+	cases: CaseService;
 };
 
 export async function buildApp(deps: AppDependencies, options: { logger: FastifyBaseLogger | false }): Promise<FastifyInstance> {
 	const app = Fastify({
 		...(options.logger ? { loggerInstance: options.logger } : { logger: false }),
 		trustProxy: deps.config.TRUST_PROXY,
-		// JSON bodies are small (manual edits); audio goes through multipart limits.
+		// JSON bodies are small (edits, the record draft); audio goes through multipart limits.
 		bodyLimit: 2_097_152
 	});
 
@@ -92,8 +92,8 @@ export async function buildApp(deps: AppDependencies, options: { logger: Fastify
 			registerHealthRoutes(api, deps);
 			registerAuthRoutes(api, deps);
 			registerModelRoutes(api, deps);
-			registerWorkspaceRoutes(api, deps);
-			registerGenerateRoutes(api, deps);
+			registerSettingsRoutes(api, deps);
+			registerCaseRoutes(api, deps);
 		},
 		{ prefix: "/api" }
 	);

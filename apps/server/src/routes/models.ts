@@ -7,7 +7,8 @@ export function registerModelRoutes(app: FastifyInstance, deps: AppDependencies)
 	app.get("/models", async () => {
 		if (!deps.codex.isAuthenticated) throw new AppError("CODEX_UNAUTHENTICATED");
 		const models = await deps.codex.listModels();
-		const body: ModelsResponse = { models, defaultModel: pickDefaultModel(models)?.id ?? null };
+		const configured = models.find(model => model.id === deps.config.DEFAULT_MODEL);
+		const body: ModelsResponse = { models, defaultModel: (configured ?? pickDefaultModel(models))?.id ?? null };
 		return body;
 	});
 }

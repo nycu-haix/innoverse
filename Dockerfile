@@ -26,7 +26,8 @@ RUN npm install -g @openai/codex@${CODEX_VERSION} && npm cache clean --force \
 ENV NODE_ENV=production \
 	HOST=0.0.0.0 \
 	PORT=3000 \
-	DATABASE_PATH=/data/app/app.db \
+	DATABASE_PATH=/data/app/interview.db \
+	AUDIO_DIR=/data/app/audio \
 	CODEX_HOME=/data/codex \
 	CODEX_RUNTIME_DIR=/data/app/codex-workdir \
 	WEB_DIST_DIR=/app/web \
@@ -35,7 +36,7 @@ WORKDIR /app
 COPY --from=build /out /app/server
 COPY --from=build /repo/apps/web/dist /app/web
 # Volume mount points owned by the unprivileged user (named volumes inherit this).
-RUN mkdir -p /data/app/codex-workdir /data/codex && chown -R node:node /data
+RUN mkdir -p /data/app/codex-workdir /data/app/audio /data/codex && chown -R node:node /data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

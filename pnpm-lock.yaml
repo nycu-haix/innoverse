@@ -217,9 +217,6 @@ importers:
       fastify:
         specifier: ^5.12.5
         version: 5.12.5
-      parse5:
-        specifier: ^8.0.1
-        version: 8.0.1
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -254,9 +251,6 @@ importers:
       '@milkdown/kit':
         specifier: ^7.22.2
         version: 7.22.2(@codemirror/language@6.12.4)(@codemirror/state@6.7.6)(@codemirror/view@6.43.13)(typescript@6.0.3)
-      dompurify:
-        specifier: ^3.4.16
-        version: 3.4.16
       lucide-react:
         specifier: ^1.49.0
         version: 1.49.0(@types/react@19.3.0)(react@19.3.0)

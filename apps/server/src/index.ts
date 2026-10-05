@@ -2,12 +2,12 @@ import { mkdirSync } from "node:fs";
 import { pino } from "pino";
 import { buildApp } from "./app";
 import { HttpAsrProvider } from "./asr/asr-client";
+import { CaseService } from "./cases/case-service";
 import { CodexAppServerClient } from "./codex/app-server-client";
 import { CodexService } from "./codex/codex-service";
 import { OPT_OUT_NOTIFICATIONS } from "./codex/protocol";
 import { loadConfig } from "./config";
 import { AppDatabase } from "./db/database";
-import { GenerationService } from "./generation/generation-service";
 
 const CODEX_ENV_ALLOWLIST = [
 	"PATH",
@@ -37,6 +37,7 @@ async function main(): Promise<void> {
 	});
 
 	mkdirSync(config.CODEX_RUNTIME_DIR, { recursive: true });
+	mkdirSync(config.AUDIO_DIR, { recursive: true, mode: 0o700 });
 	const db = new AppDatabase(config.DATABASE_PATH);
 
 	const codexEnv: NodeJS.ProcessEnv = {};
@@ -62,20 +63,22 @@ async function main(): Promise<void> {
 		logger: logger.child({ component: "codex" })
 	});
 	const asr = new HttpAsrProvider({ baseUrl: config.ASR_URL, timeoutMs: config.ASR_TIMEOUT_MS });
-	const generation = new GenerationService({
+	const cases = new CaseService({
 		db,
 		asr,
 		codex,
-		logger: logger.child({ component: "generation" }),
+		logger: logger.child({ component: "cases" }),
+		audioDir: config.AUDIO_DIR,
 		asrLanguage: config.ASR_LANGUAGE,
 		organizationHotwords: config.organizationHotwords,
-		persistTranscripts: config.PERSIST_TRANSCRIPTS,
-		logTextPreviews: config.LOG_TEXT_PREVIEWS
+		analysisDebounceMs: config.ANALYSIS_DEBOUNCE_MS,
+		defaultModel: config.DEFAULT_MODEL
 	});
 
-	const app = await buildApp({ config, db, asr, codex, generation }, { logger });
+	const app = await buildApp({ config, db, asr, codex, cases }, { logger });
 
 	app.addHook("onClose", async () => {
+		cases.close();
 		await codexClient.close();
 		db.close();
 	});

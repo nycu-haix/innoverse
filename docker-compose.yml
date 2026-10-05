@@ -11,16 +11,18 @@ services:
       NODE_ENV: production
       PORT: "3000"
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      DATABASE_PATH: /data/app/app.db
+      DATABASE_PATH: /data/app/interview.db
+      AUDIO_DIR: /data/app/audio
       CODEX_HOME: /data/codex
       ASR_URL: http://asr:8000
       ASR_LANGUAGE: ${ASR_LANGUAGE:-zh}
       ASR_TIMEOUT_MS: ${ASR_TIMEOUT_MS:-900000}
       CODEX_TURN_TIMEOUT_MS: ${CODEX_TURN_TIMEOUT_MS:-180000}
-      MAX_AUDIO_MINUTES: ${MAX_AUDIO_MINUTES:-60}
-      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-262144000}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-}
+      ANALYSIS_DEBOUNCE_MS: ${ANALYSIS_DEBOUNCE_MS:-1500}
+      MAX_UTTERANCE_SECONDS: ${MAX_UTTERANCE_SECONDS:-30}
+      MAX_AUDIO_BYTES: ${MAX_AUDIO_BYTES:-16777216}
       HOTWORDS: ${HOTWORDS:-}
-      PERSIST_TRANSCRIPTS: ${PERSIST_TRANSCRIPTS:-false}
       TRUST_PROXY: ${TRUST_PROXY:-true}
     # Host access for local runs only. Loopback + 8080 by default so it never collides with
     # the Dokploy panel on :3000 or exposes plain HTTP publicly; Traefik uses the Docker network.

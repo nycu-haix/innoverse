@@ -1,171 +1,190 @@
-import type { ArtifactMode, AuthStatus } from "@innoverse/shared";
-import { lazy, Suspense, useCallback, useReducer, useRef, useState } from "react";
-import { useClientConfig } from "../hooks/useClientConfig";
+import type { AuthStatus } from "@innoverse/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCase, useCurrentCaseId } from "../hooks/useCase";
+import { useLiveCapture, type CapturedUtterance } from "../hooks/useLiveCapture";
 import { useModels } from "../hooks/useModels";
-import { useRecorder } from "../hooks/useRecorder";
-import { useWorkspaceArtifacts } from "../hooks/useWorkspaceArtifacts";
-import { api, generateArtifact } from "../lib/api";
+import { api } from "../lib/api";
 import { ClientError, userMessage } from "../lib/errors";
-import { readPreference, writePreference } from "../lib/storage";
-import { canStartRecording, initialSession, isProcessing, sessionReducer } from "../state/session";
-import { SettingsPopover } from "./SettingsPopover";
-import { SlideStage } from "./SlideStage";
-import { StatusLine } from "./StatusLine";
-import { Toolbar } from "./Toolbar";
+import { BlocksView } from "./BlocksView";
+import { FlowRail } from "./FlowRail";
+import { RecordView } from "./RecordView";
+import { TopBar, type Mode } from "./TopBar";
+import { TranscriptPanel } from "./TranscriptPanel";
 
-// Milkdown is only needed in document mode; keep it out of the initial bundle.
-const DocumentPage = lazy(() => import("./DocumentPage").then(module => ({ default: module.DocumentPage })));
+type Props = { account: AuthStatus["account"]; onLogout: () => void };
 
-type Props = {
-	workspaceId: string;
-	account: AuthStatus["account"];
-	onLogout: () => void;
-	onAuthLost: () => void;
-};
+export function Workspace(props: Props) {
+	const current = useCurrentCaseId();
+	if (!current.caseId) {
+		return <div className="ws">{current.error && <p className="notice">{current.error}</p>}</div>;
+	}
+	return <CaseWorkspace key={current.caseId} caseId={current.caseId} onOpenCase={current.open} onNewCase={() => void current.createNew()} {...props} />;
+}
 
-/** One workspace, one floating toolbar. The artifact is the product. */
-export function Workspace({ workspaceId, account, onLogout, onAuthLost }: Props) {
-	const [mode, setMode] = useState<ArtifactMode>(() => (readPreference("mode") === "document" ? "document" : "presentation"));
-	const [continueEnabled, setContinueEnabled] = useState(() => readPreference("continue") === "true");
-	const [session, dispatch] = useReducer(sessionReducer, initialSession);
-	const [notice, setNotice] = useState<string | null>(null);
-	const recordingMode = useRef<ArtifactMode>(mode);
-	/** Mode the current recording/generation belongs to (state, so render can read it). */
-	const [activeMode, setActiveMode] = useState<ArtifactMode | null>(null);
-	const submitting = useRef(false);
+/** Uploads utterances one at a time so line numbers follow speaking order. */
+function useUploadQueue(caseId: string, onUploaded: () => void, onError: (message: string) => void) {
+	const [pending, setPending] = useState(0);
+	const chain = useRef<Promise<void>>(Promise.resolve());
+	const callbacks = useRef({ onUploaded, onError });
+	useEffect(() => {
+		callbacks.current = { onUploaded, onError };
+	}, [onUploaded, onError]);
 
-	const config = useClientConfig();
-	const models = useModels(true);
-	const workspace = useWorkspaceArtifacts(workspaceId, {
-		enabled: true,
-		onConflict: () => setNotice("內容已在其他地方更新，請再試一次。"),
-		onSaveError: error => setNotice(userMessage(error))
-	});
-
-	const submit = useCallback(
-		async (blob: Blob | null) => {
-			if (submitting.current) return;
-			submitting.current = true;
-			const targetMode = recordingMode.current;
-			dispatch({ type: "submit" });
-			try {
-				if (!blob || blob.size === 0) throw new ClientError("EMPTY_RECORDING");
-				if (blob.size > config.maxAudioBytes) throw new ClientError("UPLOAD_TOO_LARGE");
-				// Make sure the server has the latest manual edit before continuing from it.
-				const artifactRevision = await workspace.flush(targetMode);
-				const result = await generateArtifact(
-					{ workspaceId, mode: targetMode, continue: continueEnabled, model: models.model?.id ?? null, reasoningEffort: models.reasoningEffort, artifactRevision, audio: blob },
-					stage => dispatch({ type: "stage", stage })
-				);
-				// Only a completed, validated artifact replaces the current one.
-				workspace.applyGenerated(result.artifact);
-				dispatch({ type: "success", warnings: result.warnings });
-			} catch (error) {
-				dispatch({ type: "fail", error: userMessage(error) });
-				if (error instanceof ClientError) {
-					if (error.code === "STALE_REVISION") void workspace.reload();
-					if (error.code === "CODEX_UNAUTHENTICATED") onAuthLost();
+	const enqueue = useCallback(
+		(utterance: CapturedUtterance) => {
+			setPending(count => count + 1);
+			chain.current = chain.current.then(async () => {
+				try {
+					await api.uploadUtterance(caseId, utterance.audio, utterance.startedAt, utterance.durationMs);
+					callbacks.current.onUploaded();
+				} catch (err) {
+					// Silence and noise are expected; the ASR found nothing to transcribe.
+					if (!(err instanceof ClientError && (err.code === "NO_SPEECH" || err.code === "EMPTY_RECORDING"))) callbacks.current.onError(userMessage(err));
+				} finally {
+					setPending(count => count - 1);
 				}
-			} finally {
-				submitting.current = false;
-			}
+			});
 		},
-		[config.maxAudioBytes, continueEnabled, models.model, models.reasoningEffort, onAuthLost, workspace, workspaceId]
+		[caseId]
+	);
+	return { pending, enqueue };
+}
+
+function CaseWorkspace({ caseId, onOpenCase, onNewCase, account, onLogout }: Props & { caseId: string; onOpenCase: (id: string) => void; onNewCase: () => void }) {
+	const kase = useCase(caseId, onNewCase);
+	const models = useModels();
+	const [mode, setMode] = useState<Mode>("ask");
+	const [highlight, setHighlight] = useState<{ lines: string[]; scroll: boolean }>({ lines: [], scroll: false });
+	const [active, setActive] = useState<string | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
+	const [maxUtteranceMs, setMaxUtteranceMs] = useState(30_000);
+	const [editor, setEditor] = useState<HTMLElement | null>(null);
+
+	useEffect(() => {
+		api.config().then(
+			config => setMaxUtteranceMs(config.maxUtteranceSeconds * 1000),
+			() => undefined
+		);
+	}, []);
+
+	const uploads = useUploadQueue(caseId, kase.reload, setNotice);
+	const capture = useLiveCapture({ maxUtteranceMs, onUtterance: uploads.enqueue });
+
+	const startCapture = useCallback(() => {
+		setNotice(null);
+		capture.start().catch(err => setNotice(userMessage(err)));
+	}, [capture]);
+
+	const onHighlight = useCallback((lines: string[], scroll: boolean) => setHighlight({ lines, scroll }), []);
+
+	const goTo = useCallback(
+		(anchorId: string) => {
+			setMode("ask");
+			setActive(anchorId);
+			// The editor may only exist after switching back from the record view.
+			window.requestAnimationFrame(() => document.getElementById(anchorId)?.scrollIntoView({ block: "start" }));
+		},
+		[setMode]
 	);
 
-	const recorder = useRecorder({ maxDurationMs: config.maxRecordingSeconds * 1000, onAutoStop: blob => void submit(blob) });
+	const detail = kase.detail;
+	const analysis = detail?.analysis ?? null;
+	const openMustGaps = analysis?.blocks.reduce((sum, block) => sum + block.gaps.filter(gap => gap.level === "must" && gap.state === "open").length, 0) ?? 0;
+	const hasTranscript = (detail?.utterances.length ?? 0) > 0;
 
-	const onRecord = async () => {
-		if (session.status === "recording") {
-			const blob = await recorder.stop();
-			await submit(blob);
-			return;
-		}
-		if (!canStartRecording(session.status) || recorder.state !== "idle") return;
-		setNotice(null);
-		try {
-			recordingMode.current = mode;
-			setActiveMode(mode);
-			await recorder.start();
-			dispatch({ type: "record" });
-		} catch (error) {
-			dispatch({ type: "fail", error: userMessage(error) });
-		}
+	const captureControls = {
+		state: capture.state,
+		elapsedMs: capture.elapsedMs,
+		levels: capture.levels,
+		start: startCapture,
+		pause: () => void capture.pause(),
+		resume: () => void capture.resume(),
+		stop: capture.stop
 	};
-
-	const onCancel = () => {
-		recorder.cancel();
-		dispatch({ type: "cancel" });
-	};
-
-	const changeMode = (next: ArtifactMode) => {
-		setMode(next);
-		writePreference("mode", next);
-	};
-
-	const changeContinue = (value: boolean) => {
-		setContinueEnabled(value);
-		writePreference("continue", String(value));
-	};
-
-	const saveHotwords = (hotwords: string[]) => {
-		api
-			.saveHotwords(workspaceId, hotwords)
-			.then(result => workspace.setHotwords(result.hotwords))
-			.catch(error => setNotice(userMessage(error)));
-	};
-
-	const processing = isProcessing(session.status);
-	const artifact = workspace.artifacts[mode];
-	const documentLocked = processing && activeMode === "document";
 
 	return (
-		<div className="print-shell flex h-full flex-col bg-ctp-mantle">
-			<main className="print-main min-h-0 flex-1" aria-label={mode === "presentation" ? "簡報" : "文件"}>
-				{workspace.status === "error" ? (
-					<div className="flex h-full items-center justify-center text-sm text-ctp-subtext0">無法載入內容，請重新整理頁面。</div>
-				) : mode === "presentation" ? (
-					<SlideStage html={artifact.content} />
-				) : (
-					<Suspense fallback={null}>
-						<DocumentPage markdown={artifact.content} readOnly={documentLocked || workspace.status !== "ready"} onChange={content => workspace.updateContent("document", content)} />
-					</Suspense>
-				)}
-			</main>
-			<StatusLine
-				session={session}
-				notice={notice}
-				onDismiss={() => {
-					setNotice(null);
-					dispatch({ type: "dismiss" });
+		<div className="ws">
+			<TopBar
+				caseId={caseId}
+				fraudType={detail?.fraudType ?? null}
+				victimName={detail?.victimName ?? null}
+				startedAt={detail?.startedAt ?? null}
+				capture={captureControls}
+				mode={mode}
+				onMode={setMode}
+				openMustGaps={openMustGaps}
+				onOpenCase={onOpenCase}
+				onNewCase={onNewCase}
+				settings={{
+					models: models.models,
+					model: models.model,
+					reasoningEffort: models.reasoningEffort,
+					hotwords: models.hotwords,
+					onModelChange: models.selectModel,
+					onEffortChange: models.selectEffort,
+					onHotwordsSave: models.saveHotwords,
+					account,
+					onLogout
 				}}
 			/>
-			<Toolbar
-				mode={mode}
-				onModeChange={changeMode}
-				status={session.status}
-				recorderBusy={recorder.state === "requesting" || recorder.state === "stopping"}
-				elapsedMs={recorder.elapsedMs}
-				onRecord={() => void onRecord()}
-				onCancel={onCancel}
-				continueEnabled={continueEnabled}
-				onContinueChange={changeContinue}
-				onPrint={() => window.print()}
-				settings={
-					<SettingsPopover
-						models={models.models}
-						model={models.model}
-						reasoningEffort={models.reasoningEffort}
-						onModelChange={models.selectModel}
-						onEffortChange={models.selectEffort}
-						account={account}
-						onLogout={onLogout}
-						hotwords={workspace.hotwords}
-						onHotwordsSave={saveHotwords}
-						disabled={processing}
-					/>
-				}
-			/>
+			<div className="main">
+				<FlowRail analysis={analysis} active={active} onGo={goTo} />
+				<section className="editor" ref={setEditor}>
+					<div className="ed-inner">
+						{(notice ?? kase.error) && (
+							<p className="notice" role="alert">
+								{notice ?? kase.error}
+								<button
+									type="button"
+									className="btn quiet"
+									onClick={() => {
+										setNotice(null);
+										kase.setError(null);
+									}}
+								>
+									關閉
+								</button>
+							</p>
+						)}
+						{detail && mode === "record" && (
+							<RecordView caseId={caseId} record={detail.record} status={detail.recordStatus} hasTranscript={hasTranscript} openMustGaps={openMustGaps} onChanged={() => void kase.reload()} />
+						)}
+						{detail && mode === "ask" && analysis && analysis.blocks.length + analysis.conflicts.length + analysis.actions.length > 0 && (
+							<BlocksView
+								analysis={analysis}
+								utterances={detail.utterances}
+								onGapState={kase.setGapState}
+								onEditFact={kase.editFact}
+								onHighlight={onHighlight}
+								onActive={setActive}
+								scrollRoot={editor}
+							/>
+						)}
+						{detail && mode === "ask" && !analysis?.blocks.length && (
+							<div className="empty">
+								{capture.state === "idle" && !hasTranscript ? (
+									<button type="button" className="rec-start" onClick={startCapture}>
+										<span className="dot" />
+										開始錄音
+									</button>
+								) : (
+									<span>尚無案情資料</span>
+								)}
+							</div>
+						)}
+					</div>
+				</section>
+				<TranscriptPanel
+					caseId={caseId}
+					utterances={detail?.utterances ?? []}
+					pending={uploads.pending}
+					speaking={capture.state === "recording" && capture.speaking}
+					highlight={highlight}
+					analysisStatus={detail?.analysisStatus ?? { state: "idle", error: null }}
+					onToggleSpeaker={kase.setSpeaker}
+					onRetryAnalysis={() => void kase.analyze()}
+				/>
+			</div>
 		</div>
 	);
 }
