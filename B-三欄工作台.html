@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>筆錄輔助工作台 B</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --line:#dfe2e7; --line2:#eceef1;
+  --ink:#1c232b; --ink2:#4a5562; --ink3:#7a8592;
+  --navy:#1f3a5f; --accent:#1f5fa8;
+  --ok:#0b62a4; --okbg:#e7f0fa;
+  --warn:#9a4f00; --warnbg:#fff2df; --warnln:#e69f00;
+  --none:#5c6570; --nonebg:#f1f2f4;
+  --rec:#c62828;
+  --must:#b5361c; --mustbg:#fde9e4;
+  --lead:#1f5fa8; --leadbg:#e7f0fa;
+  --sup:#5c6570; --supbg:#eef0f2;
+  --blame:#fff6c7; --blameln:#d9a400;
+  --font:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;overflow:hidden}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+svg{flex:none}
+
+/* ---------- header ---------- */
+.top{height:56px;display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--navy);color:#fff}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;white-space:nowrap}
+.brand small{font-weight:400;opacity:.7;font-size:12px}
+.caseinfo{display:flex;gap:14px;font-size:13px;opacity:.92;white-space:nowrap;overflow:hidden}
+.caseinfo b{font-weight:600}
+.spacer{flex:1}
+.fict{background:#ffe9a8;color:#5a4200;font-size:12px;padding:3px 10px;border-radius:12px;font-weight:600;white-space:nowrap}
+.modes{display:flex;background:rgba(255,255,255,.12);border-radius:8px;padding:3px}
+.modes button{border:0;background:transparent;color:#dfe7f2;padding:5px 12px;border-radius:6px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.modes button.on{background:#fff;color:var(--navy);font-weight:600}
+
+/* ---------- workbench ---------- */
+.wb{display:grid;grid-template-columns:340px minmax(0,1fr) 372px;height:calc(100vh - 56px)}
+.col{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel)}
+.col:last-child{border-right:0}
+.col.center{background:var(--bg)}
+.colhead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel);min-height:46px}
+.colhead h2{margin:0;font-size:14px;font-weight:600}
+.colbody{flex:1;overflow-y:auto;min-height:0}
+.muted{color:var(--ink3);font-size:12px}
+
+/* ---------- transcript ---------- */
+.recbar{flex:none;display:flex;align-items:center;gap:8px;white-space:nowrap;padding:8px 14px;border-bottom:1px solid var(--line2);background:#fbfbfc;font-size:12.5px}
+.recdot{width:9px;height:9px;border-radius:50%;background:var(--rec);animation:pulse 1.4s infinite}
+.paused .recdot{animation:none;background:var(--ink3)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(198,40,40,.55)}70%{box-shadow:0 0 0 7px rgba(198,40,40,0)}100%{box-shadow:0 0 0 0 rgba(198,40,40,0)}}
+.rectime{font-family:var(--mono);font-weight:600}
+.meter{display:flex;gap:2px;align-items:flex-end;height:14px}
+.meter i{width:3px;background:#9fb3c8;border-radius:1px;animation:lv 1s infinite ease-in-out}
+.meter i:nth-child(2){animation-delay:.15s}.meter i:nth-child(3){animation-delay:.3s}.meter i:nth-child(4){animation-delay:.45s}.meter i:nth-child(5){animation-delay:.6s}
+.paused .meter i{animation:none;height:3px}
+@keyframes lv{0%,100%{height:3px}50%{height:13px}}
+.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 9px;color:var(--ink2);font-size:12px;display:inline-flex;align-items:center;gap:4px}
+.btn:hover{border-color:#b9c0c9;color:var(--ink)}
+.tlist{padding:10px 12px 20px;display:flex;flex-direction:column;gap:8px}
+.bub{max-width:88%;border:1px solid var(--line);border-radius:10px;padding:6px 10px 7px;background:#fff;position:relative;cursor:pointer;transition:background .15s,box-shadow .15s}
+.bub.vic{align-self:flex-start;border-top-left-radius:3px}
+.bub.off{align-self:flex-end;background:#eef3f9;border-color:#d5e0ee;border-top-right-radius:3px}
+.bub:hover{box-shadow:0 0 0 2px #c9d6e6}
+.bub.hl{background:var(--blame);border-color:var(--blameln);box-shadow:0 0 0 2px rgba(217,164,0,.35)}
+.bub.sel{box-shadow:0 0 0 2px var(--accent)}
+.bmeta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink3);margin-bottom:2px}
+.spk{border:0;border-radius:4px;padding:0 6px;font-size:11.5px;font-weight:600;line-height:18px}
+.spk.s-off{background:#d4e2f3;color:#1d4a80}
+.spk.s-vic{background:#ececec;color:#3a3f45}
+.spk:hover{outline:1px solid var(--accent)}
+.ts{font-family:var(--mono)}
+.btext{font-size:13.5px}
+.derived{font-size:11px;color:var(--accent);margin-left:auto;white-space:nowrap}
+.lowconf{margin-top:5px;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--warn);background:var(--warnbg);border:1px dashed var(--warnln);border-radius:6px;padding:3px 6px}
+.lowconf button{margin-left:auto;white-space:nowrap;flex:none;border:1px solid var(--warnln);background:#fff;border-radius:4px;color:var(--warn);font-size:11.5px;padding:0 6px}
+.fixed{font-size:11px;color:var(--ok);margin-left:4px}
+.spkmenu{position:absolute;z-index:20;top:22px;left:8px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:4px;display:flex;flex-direction:column;min-width:130px}
+.spkmenu button{border:0;background:none;text-align:left;padding:5px 8px;border-radius:5px;font-size:12.5px}
+.spkmenu button:hover{background:#eef3f9}
+.spkmenu .lbl{font-size:11px;color:var(--ink3);padding:3px 8px}
+.typing{align-self:flex-start;font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px dashed var(--line);border-radius:10px}
+.typing span{display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--ink3);animation:blink 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+.paused .typing{display:none}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+
+/* ---------- center ---------- */
+.legend{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;font-size:11.5px;color:var(--ink2);align-items:center}
+.flow{flex:none;display:flex;flex-wrap:wrap;row-gap:6px;align-items:center;gap:4px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fafbfc}
+.fchip{display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;border-radius:16px;padding:3px 9px 3px 6px;font-size:12px;white-space:nowrap;cursor:pointer}
+.fchip:hover{border-color:var(--accent)}
+.fchip.st-ok{border-color:#a9c7e6}
+.fchip.st-warn{border-color:var(--warnln);background:#fffaf2}
+.fchip.st-none{border-style:dashed;color:var(--ink2)}
+.farr{color:#a3acb7;font-size:12px}
+.cbody{padding:14px 18px 40px}
+.alert{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--warnln);border-left:4px solid var(--warnln);border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:13px}
+.alert b{color:var(--warn)}
+.alert .act{margin-left:auto;display:flex;gap:6px;flex:none}
+.checksum{display:none;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:13px}
+.mode-check .checksum{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.bar{height:6px;border-radius:3px;background:#e9ecef;width:160px;overflow:hidden;display:inline-block;vertical-align:middle}
+.bar i{display:block;height:100%;background:var(--ok)}
+.tl{position:relative;padding-left:28px}
+.tl:before{content:"";position:absolute;left:10px;top:6px;bottom:6px;width:2px;background:#cfd5dc}
+.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:14px;scroll-margin-top:10px}
+.card .node{position:absolute;left:-27px;top:12px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid currentColor}
+.card.st-ok .node{color:var(--ok)}
+.card.st-warn .node{color:var(--warnln)}
+.card.st-warn{border-left:3px solid var(--warnln)}
+.card.st-none .node{color:var(--none);border-style:dashed}
+.card.st-none{border-style:dashed}
+.card.flash{animation:flash 1.2s}
+@keyframes flash{0%{box-shadow:0 0 0 3px rgba(31,95,168,.5)}100%{box-shadow:0 0 0 0 rgba(31,95,168,0)}}
+.chead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line2)}
+.cnum{font-family:var(--mono);font-size:11.5px;color:var(--ink3)}
+.ctitle{font-weight:600;font-size:14.5px}
+.stag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;border-radius:10px;padding:1px 8px 1px 5px;white-space:nowrap}
+.stag.ok{background:var(--okbg);color:var(--ok)}
+.stag.warn{background:var(--warnbg);color:var(--warn)}
+.stag.none{background:var(--nonebg);color:var(--none);border:1px dashed #b5bcc4}
+.chead .stag{margin-left:auto}
+.sents{padding:4px 0 6px}
+.sent{display:grid;grid-template-columns:64px 18px 1fr auto;align-items:start;gap:6px;padding:3px 12px 3px 0;border-left:3px solid transparent}
+.sent:hover{background:#f7f9fb}
+.sent.hl{background:var(--blame);border-left-color:var(--blameln)}
+.gut{font-family:var(--mono);font-size:11px;color:var(--ink3);text-align:right;padding-top:3px;cursor:pointer;white-space:nowrap;user-select:none}
+.gut:hover{color:var(--accent);text-decoration:underline}
+.sico{padding-top:3px;display:flex}
+.stx{outline:none;border-radius:4px;padding:1px 4px;min-width:20px}
+.stx:focus{background:#fff;box-shadow:0 0 0 1.5px var(--accent)}
+.stx:hover{cursor:text}
+.etag{font-size:11px;color:#6b4fa0;background:#f2edf9;border-radius:4px;padding:0 6px;margin-top:2px;white-space:nowrap;display:none;border:0}
+.sent.edited .etag{display:inline-flex;align-items:center;gap:3px}
+.sent.edited .stx{border-bottom:1px dashed #9a83c4;border-radius:4px 4px 0 0}
+.sent.miss .stx{color:var(--ink2);font-size:13px}
+.misslbl{font-size:13px;font-weight:600;color:var(--none);margin-right:4px}
+.sent.miss.w .misslbl{color:var(--warn)}
+.askbtn{font-size:11px;border:1px solid var(--line);background:#fff;border-radius:4px;padding:0 6px;color:var(--accent);white-space:nowrap;margin-top:2px}
+.mode-check .sent.miss{background:#fffaf2}
+.mode-check .sent.miss.n{background:#f6f7f8}
+.mode-check .sent.miss .misslbl{text-decoration:underline}
+.kw{border-radius:3px;padding:0 2px;font-style:normal}
+.kw-time{background:#e1eaff;color:#1b3b8c;border-bottom:1.5px solid #6d8fe0}
+.kw-amt{background:#ffe6c2;color:#7a3e00;font-weight:600;border-bottom:1.5px double #d48a2a}
+.kw-acct{background:#efe3fb;color:#5a2a8a;font-family:var(--mono);font-size:12.5px}
+.kw-id{background:#d9f1ec;color:#0e5a4d;font-family:var(--mono);font-size:12.5px}
+.kw-place{background:#e4f3da;color:#2d5a12;border-bottom:1.5px dotted #5f9a3a}
+.lg{display:inline-flex;align-items:center}
+.blamepop{position:fixed;z-index:50;background:#1c232b;color:#fff;border-radius:8px;padding:8px 10px;font-size:12px;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.25);pointer-events:none;display:none}
+.blamepop .r{display:flex;gap:6px;margin:2px 0}
+.blamepop .r .ts{color:#9fc2ef;flex:none}
+.blamepop .r b{flex:none;color:#ffe08a;font-weight:600}
+.blamepop .h{font-size:11px;color:#aab4c0;margin-bottom:3px}
+
+/* ---------- right ---------- */
+.rsec{padding:12px 14px;border-bottom:1px solid var(--line2)}
+.rsec h3{margin:0 0 8px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.rsec h3 .muted{font-weight:400;margin-left:auto}
+.pq{border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-bottom:8px;background:#fff;transition:box-shadow .2s}
+.pq.flash{animation:flash 1.2s}
+.pq.top1{border-color:#9fbbe0;box-shadow:0 1px 0 #9fbbe0}
+.pqh{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.pno{font-family:var(--mono);font-size:11px;color:var(--ink3)}
+.lv{font-size:11px;font-weight:600;border-radius:4px;padding:0 6px;display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.lv.must{background:var(--mustbg);color:var(--must);border:1px solid #f0b5a6}
+.lv.lead{background:var(--leadbg);color:var(--lead);border:1px solid #b6cdea}
+.lv.sup{background:var(--supbg);color:var(--sup);border:1px dashed #b5bcc4}
+.blk{font-size:11px;color:var(--ink2);border:0;background:none;padding:0;margin-left:auto;text-decoration:underline dotted;white-space:nowrap}
+.pqq{font-size:14px;font-weight:600;line-height:1.5}
+.why{margin-top:5px;font-size:12.5px;color:var(--ink2);background:#f6f8fa;border-radius:6px;padding:5px 8px}
+.why b{color:var(--ink);font-weight:600;margin-right:4px}
+.pact{display:flex;gap:6px;margin-top:7px}
+.pact .btn.ask{border-color:#9fbbe0;color:var(--accent);font-weight:600}
+.pact .btn.ask:hover{background:var(--okbg)}
+.pq.done{opacity:.6;background:#fafafa}
+.pq.done .pqq{text-decoration:line-through;text-decoration-color:#9aa3ad}
+.pstate{font-size:11.5px;font-weight:600;margin-left:6px}
+.handled{font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:6px;margin-top:2px}
+.handled button{border:0;background:none;color:var(--accent);padding:0;font-size:12px}
+.grp{margin-bottom:12px}
+.grph{display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0 6px}
+.grph .cnt{margin-left:auto;color:var(--ink3)}
+.mode-ask .only-check{display:none}
+.mode-check .only-ask{display:none}
+.mode-check .pq .why{font-size:12px}
+.mlist{margin:0;padding:0;list-style:none}
+.mlist li{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;padding:4px 0;border-bottom:1px dashed var(--line2)}
+.mlist li:last-child{border:0}
+.mlist .where{color:var(--ink3);font-size:11.5px;flex:none;width:58px}
+.dl{margin:0;padding:0;list-style:none;counter-reset:d}
+.dl li{display:flex;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line2);font-size:12.5px;align-items:flex-start}
+.dl li:last-child{border:0}
+.dl .n{font-family:var(--mono);font-size:11px;width:18px;height:18px;border-radius:50%;background:#eef0f2;display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px}
+.dl li.urgent .n{background:var(--rec);color:#fff}
+.urg{font-size:11px;color:var(--rec);font-weight:600;border:1px solid #f0b5b5;border-radius:4px;padding:0 5px;margin-left:4px;white-space:nowrap}
+.foot{font-size:11px;color:var(--ink3);padding:10px 14px}
+
+@media (max-width:1360px){
+  .wb{grid-template-columns:300px minmax(0,1fr) 340px}
+  .caseinfo .opt{display:none}
+  .sent{grid-template-columns:58px 18px 1fr auto}
+  .recbar{padding:8px 10px;gap:6px}
+  .recbar .meter{display:none}
+  .fchip{padding:2px 7px 2px 5px;font-size:11.5px}
+  .flow{gap:2px;padding:8px 10px}
+}
+#recstate{overflow:hidden;text-overflow:ellipsis;min-width:0}
+#recbtn{flex:none}
+</style>
+</head>
+<body class="mode-ask">
+
+<header class="top">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg>
+    筆錄輔助工作台 <small>原型 B・三欄工作台</small>
+  </div>
+  <div class="caseinfo">
+    <span>案類 <b>假投資詐欺</b></span>
+    <span>被害人 <b>林○○（52）</b></span>
+    <span class="opt">詢問開始 <b>2026-10-05 14:02</b></span>
+  </div>
+  <div class="spacer"></div>
+  <span class="fict" title="本原型所有姓名、帳號、ID、APP 名稱均為虛構">本畫面資料皆為虛構</span>
+  <div class="modes" role="tablist">
+    <button id="m-ask" class="on" data-mode="ask">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>詢問中</button>
+    <button id="m-check" data-mode="check">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>簽名前檢查</button>
+  </div>
+</header>
+
+<main class="wb">
+  <!-- LEFT: transcript -->
+  <section class="col left" id="leftcol">
+    <div class="colhead">
+      <h2>即時逐字稿</h2>
+      <span class="muted">點對話 → 看衍生句子</span>
+    </div>
+    <div class="recbar" id="recbar">
+      <span class="recdot"></span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></svg>
+      <span id="recstate">桌面麥克風・收音中</span>
+      <span class="meter"><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="rectime" id="rectime">00:11:12</span>
+      <button class="btn" id="recbtn" style="margin-left:auto">暫停</button>
+    </div>
+    <div class="colbody" id="tscroll"><div class="tlist" id="tlist"></div></div>
+  </section>
+
+  <!-- CENTER: blocks -->
+  <section class="col center">
+    <div class="colhead">
+      <h2>案情區塊</h2>
+      <span class="muted" id="stcount"></span>
+      <div class="legend">
+        <span class="lg"><mark class="kw kw-time">時間</mark></span>
+        <span class="lg"><mark class="kw kw-amt">金額</mark></span>
+        <span class="lg"><mark class="kw kw-acct">帳號</mark></span>
+        <span class="lg"><mark class="kw kw-id">ID/APP</mark></span>
+        <span class="lg"><mark class="kw kw-place">地點</mark></span>
+      </div>
+    </div>
+    <div class="flow" id="flow"></div>
+    <div class="colbody" id="cscroll">
+      <div class="cbody">
+        <div class="checksum" id="checksum"></div>
+        <div class="alert" id="contra">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9a4f00" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          <div><b>矛盾提示・待確認</b>　被害人說「總共大概被騙 <mark class="kw kw-amt">40 萬</mark>」，但交付 #1 + #2 = <mark class="kw kw-amt">35 萬</mark>，交付 #3 金額未知。</div>
+          <div class="act"><button class="btn" id="contraSrc">原話</button><button class="btn" data-goprompt="p5">追問</button></div>
+        </div>
+        <div class="tl" id="tl"></div>
+        <p class="muted" style="margin-left:28px">提示：點句子即可直接修改；滑過或點左側時間戳可查看出自哪段對話。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: prompts -->
+  <section class="col right">
+    <div class="colhead">
+      <h2 class="only-ask">追問建議・下一步</h2>
+      <h2 class="only-check">簽名前檢查・完整缺漏清單</h2>
+    </div>
+    <div class="colbody">
+      <div class="rsec only-ask">
+        <div id="topPrompts"></div>
+        <div class="handled" id="handled"></div>
+      </div>
+      <div class="rsec only-check" id="fullPrompts"></div>
+      <div class="rsec only-check">
+        <h3>區塊缺漏欄位 <span class="muted" id="misscount"></span></h3>
+        <ul class="mlist" id="mlist"></ul>
+      </div>
+      <div class="rsec">
+        <h3>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          應優先調閱 <span class="muted">依時效排序</span></h3>
+        <ol class="dl">
+          <li class="urgent"><span class="n">1</span><div>竹北市○○路便利商店及周邊監視器（<mark class="kw kw-time">9/18 19:00–20:00</mark>）<span class="urg">最優先・有保存期限</span></div></li>
+          <li><span class="n">2</span><div>帳號 <mark class="kw kw-acct">822-0000-1234-5678</mark> 交易明細、通報警示帳戶</div></li>
+          <li><span class="n">3</span><div>LINE ID <mark class="kw kw-id">invest_chen888</mark> 帳號資料</div></li>
+          <li><span class="n">4</span><div>「鼎盛國際」APP 下載來源／網域資料</div></li>
+        </ol>
+      </div>
+      <div class="foot">靜態原型・無 AI、無後端，所有內容為寫死的虛構資料。</div>
+    </div>
+  </section>
+</main>
+
+<div class="blamepop" id="pop"></div>
+
+<script>
+/* ===== icons ===== */
+const IC = {
+  ok:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>',
+  warn:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 3L2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>',
+  none:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="3 3"><circle cx="12" cy="12" r="8"/></svg>',
+  pen:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  must:'<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>',
+  lead:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="11" cy="11" r="6"/><path d="M16 16l5 5"/></svg>',
+  sup:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>'
+};
+const ST = {ok:{l:'已取得',i:IC.ok}, warn:{l:'待確認',i:IC.warn}, none:{l:'尚未提及',i:IC.none}};
+const stTag = (s,label)=>`<span class="stag ${s}">${ST[s].i}${label||ST[s].l}</span>`;
+const LV = {must:{l:'必要',i:IC.must}, lead:{l:'偵查線索',i:IC.lead}, sup:{l:'補充',i:IC.sup}};
+const lvTag = k=>`<span class="lv ${k}">${LV[k].i}${LV[k].l}</span>`;
+const K = (c,t)=>`<mark class="kw kw-${c}">${t}</mark>`;
+
+/* ===== transcript (verbatim from mock-case.md) ===== */
+const T = [
+ {id:1, ts:'14:02:10', sp:'員警', tx:'林小姐，請您從頭說，一開始是怎麼接觸到對方的？'},
+ {id:2, ts:'14:02:25', sp:'被害人', tx:'九月三號晚上吧，我在臉書看到一個投資的廣告，點進去就加了一個 LINE，叫陳老師。'},
+ {id:3, ts:'14:03:05', sp:'員警', tx:'那個 LINE 的 ID 您還記得嗎？'},
+ {id:4, ts:'14:03:12', sp:'被害人', tx:'有，我手機裡還有，是 invest_chen888。'},
+ {id:5, ts:'14:03:40', sp:'被害人', tx:'他把我拉進一個群組叫財富自由學院，裡面兩百多個人，每天都有人貼賺錢的截圖。'},
+ {id:6, ts:'14:04:30', sp:'被害人', tx:'陳老師說跟著他做，每個月保證賺兩成，叫我下載一個 APP 叫鼎盛國際。'},
+ {id:7, ts:'14:06:02', sp:'員警', tx:'第一次匯錢是什麼時候？'},
+ {id:8, ts:'14:06:15', sp:'被害人', tx:'九月十號下午兩點多，我用網銀轉了五萬，轉到一個王什麼的帳戶。'},
+ {id:9, ts:'14:08:40', sp:'員警', tx:'後來還有再給錢嗎？'},
+ {id:10,ts:'14:08:52', sp:'被害人', tx:'有，十八號晚上七點半左右，他說要面交，叫我拿三十萬到竹北一間便利商店前面。'},
+ {id:11,ts:'14:09:30', sp:'員警', tx:'來拿錢的人長什麼樣子？'},
+ {id:12,ts:'14:09:41', sp:'被害人', tx:'一個年輕男生，二十幾歲吧，戴黑色口罩、穿灰色帽 T，騎機車來的，車牌我沒注意。'},
+ {id:13,ts:'14:10:20', sp:'員警', tx:'他有拿一個工作證給我看，寫鼎盛國際外派專員，還開了一張收據給我。', lowconf:true}, /* 示範：被誤標為員警 */
+ {id:14,ts:'14:11:05', sp:'被害人', tx:'後來又買了一次 USDT 轉過去。'},
+ {id:15,ts:'14:12:30', sp:'員警', tx:'什麼時候發現被騙的？'},
+ {id:16,ts:'14:12:41', sp:'被害人', tx:'二十八號我想把錢領出來，APP 說要先繳十五萬保證金，我才覺得不對。'},
+ {id:17,ts:'14:13:10', sp:'被害人', tx:'總共大概被騙了四十萬吧。'}
+];
+
+/* ===== blocks ===== */
+const B = [
+ {id:'b1', n:1, t:'接觸', st:'ok', items:[
+   {id:'s1', src:[2], h:`${K('time','2026-09-03 晚上')}，在 Facebook 看到投資廣告`},
+   {id:'s2', src:[2,3,4], h:`點廣告後加入 LINE 好友「陳老師」，LINE ID：${K('id','invest_chen888')}`},
+   {id:'s3', src:[5], h:`被拉進 LINE 群組「財富自由學院」（約 200 人）`}]},
+ {id:'b2', n:2, t:'取得信任', st:'ok', items:[
+   {id:'s4', src:[5], h:`「陳老師」每天在群組報明牌，群組內其他人一直貼獲利截圖`},
+   {id:'s5', src:[6], h:`對方保證每月獲利 ${K('amt','20%')}`},
+   {id:'s6', src:[6], h:`要求下載投資 APP「${K('id','鼎盛國際')}」並註冊帳號`}]},
+ {id:'b3', n:3, t:'交付 #1：網路銀行轉帳', st:'warn', items:[
+   {id:'s7', src:[7,8], h:`${K('time','2026-09-10 14:20')}，網路銀行轉帳 ${K('amt','NT$50,000')}`},
+   {id:'s8', src:[8], h:`轉入帳號：${K('acct','822-0000-1234-5678')}（虛構），戶名：王○○`},
+   {id:'m1', miss:'none', p:'p3', h:`<span class="misslbl">交易序號</span>尚未提及`}]},
+ {id:'b4', n:4, t:'交付 #2：面交', st:'warn', items:[
+   {id:'s9', src:[9,10], h:`${K('time','2026-09-18 約 19:30')}，${K('place','竹北市○○路便利商店前')}`},
+   {id:'s10', src:[10], h:`交付現金 ${K('amt','NT$300,000')}`},
+   {id:'s11', src:[11,12], h:`車手：男性、約 20 多歲、黑色口罩、灰色連帽外套、騎機車`},
+   {id:'s12', src:[13], h:`車手出示「${K('id','鼎盛國際')}外派專員」工作證，並開立收據`},
+   {id:'m2', miss:'none', p:'p1', h:`<span class="misslbl">收據目前在哪裡、是否碰觸過</span>尚未提及`},
+   {id:'m3', miss:'none', p:'p4', h:`<span class="misslbl">交付時是否與他人通話</span>尚未提及`},
+   {id:'m4', miss:'warn', src:[12], h:`<span class="misslbl">機車車牌</span>被害人表示「沒注意」`}]},
+ {id:'b5', n:5, t:'交付 #3：虛擬貨幣（USDT）', st:'none', label:'尚未提及細節', items:[
+   {id:'s13', src:[14], h:`被害人只說「後來又買了一次 USDT 轉過去」`},
+   {id:'m5', miss:'none', p:'p2', h:`<span class="misslbl">日期、金額、購幣方式、錢包地址、TxID</span>皆未提及`}]},
+ {id:'b6', n:6, t:'發現受騙', st:'ok', items:[
+   {id:'s14', src:[15,16], h:`${K('time','2026-09-28')} 想出金，APP 顯示需先繳「保證金」${K('amt','15 萬')}，才發現被騙`}]},
+ {id:'b7', n:7, t:'二次詐騙', st:'none', items:[
+   {id:'m6', miss:'none', p:'p6', h:`<span class="misslbl">是否有人聲稱可協助追回款項</span>尚未提及`}]}
+];
+
+/* ===== prompts ===== */
+const P = [
+ {id:'p1', pr:1, q:'面交時拿到的收據現在在哪裡？交付時您有沒有摸過？', why:'收據可能留有車手姓名或指紋，可採證比對', lv:'lead', blk:'b4', bl:'交付 #2'},
+ {id:'p2', pr:2, q:'第三次買 USDT 是哪一天、多少錢？向誰買、轉到哪個錢包地址？', why:'「交付財物」為構成要件；錢包地址可追查鏈上金流至交易所', lv:'must', blk:'b5', bl:'交付 #3'},
+ {id:'p3', pr:3, q:'9/10 那筆轉帳的交易序號或轉帳截圖還在嗎？', why:'據以函調帳戶交易明細、通報警示帳戶', lv:'lead', blk:'b3', bl:'交付 #1'},
+ {id:'p4', pr:4, q:'面交時車手有沒有一邊講電話？', why:'調閱通聯，連結車手與機房', lv:'lead', blk:'b4', bl:'交付 #2'},
+ {id:'p5', pr:5, q:'總共被騙的金額是多少？跟每一筆對得起來嗎？', why:'確認損害金額一致，避免筆錄矛盾', lv:'must', blk:'contra', bl:'損害'},
+ {id:'p6', pr:6, q:'報案前後，有沒有人說可以幫您追回款項？', why:'防範二次詐騙，可能涉及另案', lv:'sup', blk:'b7', bl:'二次詐騙'}
+];
+const state = {}; // pid -> 'asked' | 'skipped'
+
+/* ===== helpers ===== */
+const $ = s=>document.querySelector(s);
+const $$ = s=>[...document.querySelectorAll(s)];
+const tById = id=>T.find(t=>t.id===id);
+const srcMap = {}; // transcript id -> [sentence ids]
+B.forEach(b=>b.items.forEach(it=>(it.src||[]).forEach(s=>(srcMap[s]=srcMap[s]||[]).push(it.id))));
+srcMap[17]=(srcMap[17]||[]).concat(['contra']);
+
+/* ===== render transcript ===== */
+function renderT(){
+  $('#tlist').innerHTML = T.map(t=>{
+    const off = t.sp==='員警';
+    const n = (srcMap[t.id]||[]).filter(x=>x!=='contra').length;
+    return `<div class="bub ${off?'off':'vic'}" id="t${t.id}" data-t="${t.id}">
+      <div class="bmeta">
+        <button class="spk ${off?'s-off':'s-vic'}" data-spk="${t.id}" title="點擊更正說話者">${t.sp} ▾</button>
+        <span class="ts">${t.ts}</span>${t.fixed?'<span class="fixed">✓ 已更正說話者</span>':''}
+        ${n?`<span class="derived">→ ${n} 句</span>`:''}
+      </div>
+      <div class="btext">${t.tx}</div>
+      ${t.lowconf?`<div class="lowconf">${IC.warn}說話者可能誤判（內容像被害人陳述）<button data-fix="${t.id}">改為被害人</button></div>`:''}
+    </div>`;
+  }).join('') + `<div class="typing"><span></span><span></span><span></span>辨識中…</div>`;
+}
+
+/* ===== render blocks ===== */
+function renderB(){
+  $('#flow').innerHTML = B.map((b,i)=>`${i?'<span class="farr">→</span>':''}<span class="fchip st-${b.st}" data-go="${b.id}" title="${ST[b.st].l}"><span style="color:var(--${b.st==='warn'?'warn':b.st})">${ST[b.st].i}</span>${b.t.replace(/：.*/,'')}</span>`).join('');
+  $('#tl').innerHTML = B.map(b=>`<article class="card st-${b.st}" id="${b.id}">
+    <span class="node">${ST[b.st].i}</span>
+    <div class="chead"><span class="cnum">#${b.n}</span><span class="ctitle">${b.t}</span>${stTag(b.st,b.label)}</div>
+    <div class="sents">${b.items.map(it=>{
+      if(it.miss && !it.src) return `<div class="sent miss n" id="${it.id}">
+        <span class="gut" style="cursor:default">—</span><span class="sico" style="color:var(--none)">${IC.none}</span>
+        <span class="stx">${it.h}</span><button class="askbtn" data-goprompt="${it.p}">追問 #${it.p.slice(1)}</button></div>`;
+      const first = tById(it.src[0]).ts.slice(0,5);
+      const s = it.miss||'ok';
+      return `<div class="sent ${it.miss?'miss w':''}" id="${it.id}" data-src="${it.src.join(',')}">
+        <span class="gut" data-gut="${it.id}" title="來源對話">${first}${it.src.length>1?` +${it.src.length-1}`:''}</span>
+        <span class="sico" style="color:var(--${s==='warn'?'warn':'ok'})" title="${ST[s].l}">${ST[s].i}</span>
+        <span class="stx" contenteditable="true" spellcheck="false">${it.h}</span>
+        <button class="etag" data-restore="${it.id}" title="點擊還原為原始內容">${IC.pen}已修改・還原</button></div>`;
+    }).join('')}</div></article>`).join('');
+  B.forEach(b=>b.items.forEach(it=>{ const el=document.getElementById(it.id); if(el) it.orig = el.querySelector('.stx').innerHTML; }));
+  const c={ok:0,warn:0,none:0}; B.forEach(b=>c[b.st]++);
+  $('#stcount').innerHTML = `已取得 ${c.ok}・待確認 ${c.warn}・尚未提及 ${c.none}`;
+}
+
+/* ===== render prompts ===== */
+function pCard(p, top){
+  const s = state[p.id];
+  return `<div class="pq ${s?'done':''} ${top?'top1':''}" id="pq-${p.id}">
+    <div class="pqh"><span class="pno">#${p.pr}</span>${lvTag(p.lv)}${s?`<span class="pstate" style="color:${s==='asked'?'var(--ok)':'var(--ink3)'}">${s==='asked'?'✓ 已問':'— 略過'}</span>`:''}
+      <button class="blk" data-go="${p.blk}">${p.bl}</button></div>
+    <div class="pqq">${p.q}</div>
+    <div class="why"><b>為什麼要問</b>${p.why}</div>
+    <div class="pact">${s?`<button class="btn" data-undo="${p.id}">復原</button>`:
+      `<button class="btn ask" data-ask="${p.id}">${IC.ok}已問</button><button class="btn" data-skip="${p.id}">略過</button>`}</div>
+  </div>`;
+}
+function renderP(){
+  const open = P.filter(p=>!state[p.id]);
+  const top = open.slice(0,3);
+  $('#topPrompts').innerHTML = top.length ? top.map((p,i)=>pCard(p,i===0)).join('') :
+    `<p class="muted">目前沒有待問的建議。可切換到「簽名前檢查」確認完整清單。</p>`;
+  const done = P.filter(p=>state[p.id]);
+  $('#handled').innerHTML = [open.length>3?`其餘 ${open.length-3} 則待問`:'', done.length?`已處理 ${done.length} 則`:''].filter(Boolean).join('・') + ` <button data-mode="check">看完整清單</button>`;
+  // full grouped
+  $('#fullPrompts').innerHTML = ['must','lead','sup'].map(k=>{
+    const list = P.filter(p=>p.lv===k);
+    const d = list.filter(p=>state[p.id]==='asked').length;
+    return `<div class="grp"><div class="grph">${lvTag(k)}<span class="cnt">已問 ${d} / ${list.length}</span></div>${list.map(p=>pCard(p)).join('')}</div>`;
+  }).join('');
+  // missing list
+  const miss=[]; B.forEach(b=>b.items.forEach(it=>{ if(it.miss) miss.push({b,it}); }));
+  $('#misscount').textContent = `共 ${miss.length} 項`;
+  $('#mlist').innerHTML = miss.map(({b,it})=>`<li><span style="color:var(--${it.miss==='warn'?'warn':'none'});padding-top:3px">${ST[it.miss].i}</span>
+    <span class="where">${b.t.replace(/：.*/,'')}</span><span>${it.h.replace(/<[^>]+>/g,' ').trim()}</span></li>`).join('');
+  // checksum (center)
+  const must = P.filter(p=>p.lv==='must'), mustDone = must.filter(p=>state[p.id]==='asked').length;
+  const tot = P.filter(p=>state[p.id]==='asked').length;
+  $('#checksum').innerHTML = `<b>簽名前檢查</b>
+    <span>必要追問 <b style="color:var(--must)">${mustDone}/${must.length}</b></span>
+    <span>全部追問 ${tot}/${P.length} <span class="bar"><i style="width:${tot/P.length*100}%"></i></span></span>
+    <span>缺漏欄位 <b>${miss.length}</b> 項</span>
+    <span>矛盾 <b style="color:var(--warn)">1</b> 項待確認</span>
+    <span class="muted" style="margin-left:auto">${mustDone<must.length?'⚠ 必要項目未完成，建議補問後再請被害人簽名':'✓ 必要項目已完成'}</span>`;
+}
+
+/* ===== blame interaction ===== */
+let pinned = null;
+function clearHL(){ $$('.hl').forEach(e=>e.classList.remove('hl')); $$('.bub.sel').forEach(e=>e.classList.remove('sel')); }
+function showSentenceSrc(sid, scroll){
+  clearHL();
+  const el = document.getElementById(sid); if(!el) return;
+  el.classList.add('hl');
+  const src = el.dataset.src.split(',').map(Number);
+  src.forEach(i=>document.getElementById('t'+i).classList.add('hl'));
+  if(scroll) document.getElementById('t'+src[0]).scrollIntoView({behavior:'smooth',block:'center'});
+}
+function showBubbleDerived(tid){
+  clearHL();
+  const b = document.getElementById('t'+tid); b.classList.add('sel');
+  const list = srcMap[tid]||[];
+  list.forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.add('hl'); });
+  if(list.length){ document.getElementById(list[0]).scrollIntoView({behavior:'smooth',block:'center'}); }
+}
+const pop = $('#pop');
+function showPop(sid, x, y){
+  const el = document.getElementById(sid); if(!el||!el.dataset.src) return;
+  const src = el.dataset.src.split(',').map(Number);
+  pop.innerHTML = `<div class="h">來源對話（${src.length} 段）・點擊可在左欄定位</div>` + src.map(i=>{const t=tById(i);return `<div class="r"><span class="ts">${t.ts}</span><b>${t.sp}</b><span>${t.tx}</span></div>`}).join('');
+  pop.style.display='block';
+  const r = pop.getBoundingClientRect();
+  pop.style.left = Math.min(x+14, innerWidth-r.width-10)+'px';
+  pop.style.top = Math.min(y+14, innerHeight-r.height-10)+'px';
+}
+
+document.addEventListener('mouseover', e=>{
+  const s = e.target.closest('.sent[data-src]');
+  if(s && !pinned){ showSentenceSrc(s.id,false); }
+  const g = e.target.closest('.gut[data-gut]');
+  if(g){ showPop(g.dataset.gut, e.clientX, e.clientY); } else pop.style.display='none';
+});
+document.addEventListener('mouseout', e=>{
+  const s = e.target.closest('.sent[data-src]');
+  if(s && !pinned && !s.contains(e.relatedTarget)) clearHL();
+});
+document.addEventListener('focusin', e=>{
+  const s = e.target.closest('.sent[data-src]');
+  if(s){ pinned = s.id; showSentenceSrc(s.id,true); }
+});
+document.addEventListener('focusout', e=>{
+  const s = e.target.closest('.sent[data-src]');
+  if(s){ pinned=null; }
+});
+document.addEventListener('input', e=>{
+  const s = e.target.closest('.sent'); if(!s) return;
+  const it = B.flatMap(b=>b.items).find(i=>i.id===s.id);
+  s.classList.toggle('edited', e.target.innerHTML !== it.orig);
+});
+
+document.addEventListener('click', e=>{
+  const t = e.target;
+  let x;
+  if((x=t.closest('[data-fix]'))){ const tr=tById(+x.dataset.fix); tr.sp='被害人'; tr.lowconf=false; tr.fixed=true; renderT(); showBubbleDerived(tr.id); return; }
+  if((x=t.closest('[data-spk]'))){ e.stopPropagation(); openSpkMenu(x); return; }
+  if((x=t.closest('[data-setspk]'))){ const tr=tById(+x.dataset.id); if(tr.sp!==x.dataset.setspk){tr.sp=x.dataset.setspk; tr.fixed=true; tr.lowconf=false;} closeMenu(); renderT(); return; }
+  closeMenu();
+  if((x=t.closest('[data-gut]'))){ pinned=x.dataset.gut; showSentenceSrc(x.dataset.gut,true); return; }
+  if((x=t.closest('.bub'))){ pinned=null; showBubbleDerived(+x.dataset.t); return; }
+  if((x=t.closest('[data-restore]'))){ const it=B.flatMap(b=>b.items).find(i=>i.id===x.dataset.restore); const s=document.getElementById(it.id); s.querySelector('.stx').innerHTML=it.orig; s.classList.remove('edited'); return; }
+  if((x=t.closest('[data-ask]'))){ state[x.dataset.ask]='asked'; renderP(); return; }
+  if((x=t.closest('[data-skip]'))){ state[x.dataset.skip]='skipped'; renderP(); return; }
+  if((x=t.closest('[data-undo]'))){ delete state[x.dataset.undo]; renderP(); return; }
+  if((x=t.closest('[data-mode]'))){ setMode(x.dataset.mode); return; }
+  if((x=t.closest('[data-go]'))){ const el=document.getElementById(x.dataset.go); el.scrollIntoView({behavior:'smooth',block:'start'}); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); return; }
+  if((x=t.closest('[data-goprompt]'))){ goPrompt(x.dataset.goprompt); return; }
+  if(t.closest('#contraSrc')){ clearHL(); [17,8,10].forEach(i=>document.getElementById('t'+i).classList.add('hl')); document.getElementById('t17').scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  if(!t.closest('.sent')){ pinned=null; clearHL(); }
+});
+
+function goPrompt(pid){
+  if(state[pid]) delete state[pid];
+  const inTop = P.filter(p=>!state[p.id]).slice(0,3).some(p=>p.id===pid);
+  if(!inTop && document.body.classList.contains('mode-ask')) setMode('check');
+  renderP();
+  const sel = document.body.classList.contains('mode-ask') ? '#topPrompts #pq-'+pid : '#fullPrompts #pq-'+pid;
+  const el = $(sel); if(!el) return;
+  el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash');
+}
+
+let menu=null;
+function openSpkMenu(btn){
+  closeMenu();
+  const id = btn.dataset.spk;
+  menu = document.createElement('div'); menu.className='spkmenu';
+  menu.innerHTML = `<span class="lbl">更正說話者</span><button data-setspk="員警" data-id="${id}">員警</button><button data-setspk="被害人" data-id="${id}">被害人</button>`;
+  btn.closest('.bub').appendChild(menu);
+}
+function closeMenu(){ if(menu){ menu.remove(); menu=null; } }
+
+function setMode(m){
+  document.body.classList.toggle('mode-ask', m==='ask');
+  document.body.classList.toggle('mode-check', m==='check');
+  $('#m-ask').classList.toggle('on', m==='ask');
+  $('#m-check').classList.toggle('on', m==='check');
+  history.replaceState(null,'', m==='check'?'#check':'#ask');
+}
+
+/* ===== recording clock ===== */
+let sec = 11*60+12, rec = true;
+setInterval(()=>{ if(!rec) return; sec++; const h=String(Math.floor(sec/3600)).padStart(2,'0'), m=String(Math.floor(sec/60)%60).padStart(2,'0'), s=String(sec%60).padStart(2,'0'); $('#rectime').textContent=`${h}:${m}:${s}`; },1000);
+$('#recbtn').addEventListener('click', e=>{ e.stopPropagation(); rec=!rec; $('#leftcol').classList.toggle('paused',!rec); $('#recstate').textContent = rec?'桌面麥克風・收音中':'已暫停收音'; $('#recbtn').textContent = rec?'暫停':'繼續'; });
+
+renderT(); renderB(); renderP();
+setMode(location.hash==='#check'?'check':'ask');
+$('#tscroll').scrollTop = 1e6;
+</script>
+</body>
+</html>

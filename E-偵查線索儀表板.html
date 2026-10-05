@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>偵查線索儀表板</title>
+<style>
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#1b1f24; --ink2:#4a5260; --ink3:#7a8290; --line:#dde1e7; --line2:#eceff3;
+  --navy:#16243a;
+  /* status (Okabe-Ito based, color-blind safe; always paired with icon+label) */
+  --got:#0a6aa8; --got-bg:#e3f0f9;
+  --pend:#a85d00; --pend-bg:#fdf0dc;
+  --miss:#6b7280; --miss-bg:#f1f2f4;
+  /* levels */
+  --must:#c0430a; --must-bg:#fbe7dc;
+  --lead:#0a6aa8; --lead-bg:#e3f0f9;
+  --supp:#6b7280;
+  /* keywords */
+  --k-t:#d6ecfa; --k-t-b:#3f8fc4;
+  --k-m:#fff0b3; --k-m-b:#c49a00;
+  --k-a:#eadcf5; --k-a-b:#8a53b5;
+  --k-i:#d4f0e6; --k-i-b:#1f8a66;
+  --k-p:#fbe0ec; --k-p-b:#c0508a;
+  --font:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:13px/1.5 var(--font);overflow:hidden;
+  display:grid;grid-template-rows:52px auto 1fr 40px;grid-template-columns:minmax(0,1fr);height:100vh}
+button{font:inherit;color:inherit;cursor:pointer}
+svg{flex:none}
+.ico{width:14px;height:14px;display:inline-block;vertical-align:-2px}
+
+/* ---------- header ---------- */
+header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:16px;padding:0 16px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:.02em;white-space:nowrap}
+.brand small{font-weight:400;opacity:.65;font-size:12px}
+.caseinfo{display:flex;gap:14px;font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden}
+.caseinfo b{font-weight:600;opacity:1}
+.fict{background:#ffd75e;color:#3a2a00;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:3px;white-space:nowrap}
+.spacer{flex:1}
+.seg{display:flex;background:rgba(255,255,255,.1);border-radius:6px;padding:3px}
+.seg button{border:0;background:transparent;color:#cdd5e0;padding:5px 12px;border-radius:4px;display:flex;gap:6px;align-items:center;font-size:12.5px;white-space:nowrap}
+.seg button.on{background:#fff;color:var(--navy);font-weight:700}
+.btn-export{border:1px solid #ffd75e;background:#ffd75e;color:#2b2000;font-weight:700;padding:6px 12px;border-radius:5px;display:none;align-items:center;gap:6px;white-space:nowrap}
+body.check .btn-export{display:flex}
+
+/* ---------- timeline ---------- */
+.tl{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 16px 10px;display:flex;gap:12px;align-items:stretch}
+.tl-label{writing-mode:vertical-rl;font-size:11px;color:var(--ink3);letter-spacing:.2em;border-right:1px solid var(--line2);padding-right:6px}
+.chips{display:flex;align-items:center;flex:1;min-width:0}
+.chip{flex:1 1 0;min-width:0;border:1.5px solid var(--line);border-radius:7px;padding:6px 9px;background:#fff;text-align:left;position:relative}
+.chip:hover{border-color:#9aa3b0}
+.chip.sel{box-shadow:0 0 0 2px var(--navy)}
+.chip.got{border-color:#9cc6e2;background:linear-gradient(#fff,#f5fafd)}
+.chip.pend{border-color:#e5b46e;background:linear-gradient(#fff,#fffaf1)}
+.chip.miss{border-style:dashed;border-color:#a9afb8;background:#fafafa}
+.chip .r1{display:flex;align-items:center;gap:5px;font-weight:700;font-size:13px;white-space:nowrap}
+.chip .r2{font-size:11.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.chip .r2 .amt{font-weight:700;color:var(--ink)}
+.chip .r3{overflow:hidden;display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:3px;gap:4px}
+.chip .open{color:var(--pend);font-weight:600;white-space:nowrap}
+.chip.pay{border-top-width:4px}
+.conn{flex:0 0 16px;height:2px;background:#b8bec8;position:relative}
+.conn:after{content:"";position:absolute;right:-1px;top:-4px;border:5px solid transparent;border-left:6px solid #b8bec8;border-right:0}
+.tl-side{flex:0 0 200px;border-left:1px solid var(--line2);padding-left:12px;font-size:12px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tl-side .sum{font-size:12px;color:var(--ink2)}
+.tl-side .sum b{font-size:15px;color:var(--ink)}
+.contra{display:flex;gap:6px;align-items:flex-start;background:var(--pend-bg);border:1px solid #e5b46e;border-radius:5px;padding:4px 7px;font-size:11.5px;color:#5b3400;cursor:pointer;text-align:left}
+
+/* status pill */
+.st{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 6px 1px 4px;border-radius:10px;white-space:nowrap}
+.st.got{color:var(--got);background:var(--got-bg)}
+.st.pend{color:var(--pend);background:var(--pend-bg)}
+.st.miss{color:var(--miss);background:var(--miss-bg);outline:1px dashed #b3b8c0;outline-offset:-1px}
+
+/* level tag */
+.lv{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap;line-height:16px}
+.lv.must{background:var(--must);color:#fff}
+.lv.lead{color:var(--lead);border:1px solid var(--lead);background:#fff}
+.lv.supp{color:var(--supp);border:1px dashed var(--supp);background:#fff}
+
+/* ---------- main ---------- */
+main{display:grid;grid-template-columns:minmax(0,1fr) 384px;min-height:0}
+.board{overflow:auto;padding:12px 16px 24px;min-width:0}
+.side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 14px 20px;min-width:0}
+
+.bhead{display:flex;align-items:center;gap:10px;margin:2px 0 8px}
+.bhead h2{font-size:14px;margin:0;display:flex;align-items:center;gap:6px}
+.bhead .hint{color:var(--ink3);font-size:12px}
+.colhdr{display:grid;grid-template-columns:minmax(0,1.05fr) 22px minmax(0,1.15fr) 22px minmax(0,.9fr);font-size:11px;color:var(--ink3);letter-spacing:.08em;padding:0 2px 4px;font-weight:600}
+.colhdr span:nth-child(even){visibility:hidden}
+.filterbar{display:flex;align-items:center;gap:8px;background:#e8ecf2;border-radius:5px;padding:5px 10px;margin-bottom:8px;font-size:12px}
+.filterbar button{border:0;background:#fff;border-radius:4px;padding:2px 8px;font-size:12px}
+
+/* chain row */
+.chain{display:grid;grid-template-columns:minmax(0,1.05fr) 22px minmax(0,1.15fr) 22px minmax(0,.9fr);align-items:stretch;margin-bottom:10px;position:relative}
+.chain.flash .cell{animation:fl 1.2s ease}
+@keyframes fl{0%,40%{box-shadow:0 0 0 3px #ffd75e}100%{box-shadow:none}}
+.cell{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 10px;min-width:0}
+.cell-h{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink3);margin-bottom:5px;flex-wrap:wrap}
+.cell-h .ttl{font-weight:700;color:var(--ink2)}
+.cell-h .rt{margin-left:auto;display:flex;gap:4px}
+.fact{border-left:4px solid var(--line)}
+.fact.got{border-left-color:var(--got)}
+.fact.pend{border-left-color:var(--pend)}
+.fact.miss{border-left-color:#a9afb8;border-left-style:dashed}
+.arrow{display:flex;align-items:center;justify-content:center;color:#9aa3b0}
+.chain.done .arrow{color:var(--got)}
+
+ul.sents{list-style:none;margin:0;padding:0}
+.sent{display:flex;gap:6px;align-items:flex-start;padding:2px 3px;margin:0 -3px;border-radius:4px;position:relative}
+.sent:hover{background:#f5f7fa}
+.sent .txt{flex:1;min-width:0;outline:none;border-radius:3px;padding:0 2px;font-size:13px}
+.sent .txt:focus{background:#fffbe8;box-shadow:0 0 0 1.5px #e0c96a}
+.sent .src{border:0;background:#eef1f5;color:var(--ink2);font:600 10.5px/16px var(--mono);border-radius:3px;padding:1px 5px;margin-top:1px;white-space:nowrap;display:flex;gap:3px;align-items:center}
+.sent:hover .src,.sent .src.on{background:var(--navy);color:#fff}
+.sent .ed{display:none;font-size:10px;color:#8a6d00;background:#fff5cc;border-radius:3px;padding:0 4px;margin-top:2px;white-space:nowrap}
+.sent.edited .ed{display:inline-block}
+.sent.edited .txt{border-bottom:1px dotted #c49a00}
+.miss-it{display:flex;gap:6px;align-items:flex-start;font-size:12.5px;color:#5c626c;padding:3px 6px;margin:3px 0 0;border:1px dashed #b3b8c0;border-radius:4px;background:#fafafa}
+.miss-it.pend{border-color:#e5b46e;background:var(--pend-bg);color:#5b3400}
+.miss-it.asked{border-style:solid;border-color:#9cc6e2;background:var(--got-bg);color:#0b4870}
+
+mark.k{border-radius:3px;padding:0 2px;color:inherit;font-weight:600;box-shadow:inset 0 -2px 0 var(--b)}
+mark.k-t{background:var(--k-t);--b:var(--k-t-b)}
+mark.k-m{background:var(--k-m);--b:var(--k-m-b)}
+mark.k-a{background:var(--k-a);--b:var(--k-a-b);font-family:var(--mono);font-size:12px}
+mark.k-i{background:var(--k-i);--b:var(--k-i-b);font-family:var(--mono);font-size:12px}
+mark.k-p{background:var(--k-p);--b:var(--k-p-b)}
+
+.ask{border-top:3px solid var(--line)}
+.ask.must{border-top-color:var(--must)}
+.ask.lead{border-top-color:var(--lead)}
+.ask.supp{border-top-color:#a9afb8}
+.ask.asked{background:#f6fafd}
+.ask.skipped{background:#f7f7f8}
+.ask.skipped .q{text-decoration:line-through;color:var(--ink3)}
+.q{font-size:14px;font-weight:700;margin:0 0 5px;line-height:1.45}
+.why{margin:0;font-size:12px;color:var(--ink2);background:#f5f7fa;border-radius:4px;padding:4px 7px;display:flex;gap:6px}
+.why b{color:var(--ink);white-space:nowrap}
+.qbtns{display:flex;gap:6px;margin-top:7px;align-items:center;flex-wrap:wrap}
+.qb{border:1px solid var(--line);background:#fff;border-radius:4px;padding:3px 9px;font-size:12px;display:flex;align-items:center;gap:4px}
+.qb:hover{border-color:#9aa3b0}
+.qb.pri{background:var(--navy);border-color:var(--navy);color:#fff}
+.qb.undo{border:0;background:transparent;color:var(--ink3);text-decoration:underline;padding:3px 2px}
+.qstate{font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:4px}
+.qstate.asked{color:var(--got)}
+.qstate.skipped{color:var(--ink3)}
+.reason{font:inherit;font-size:12px;border:1px solid var(--line);border-radius:4px;padding:2px 4px}
+.noq{color:var(--ink3);font-size:12.5px;display:flex;gap:6px;align-items:center;height:calc(100% - 22px);min-height:40px}
+
+.act{background:#fbfcfd}
+.act-t{font-weight:700;font-size:13px;margin:0 0 3px}
+.act-d{font-size:12px;color:var(--ink2);margin:0}
+.as{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap}
+.as.urgent{background:#c0430a;color:#fff}
+.as.ready{background:var(--got-bg);color:var(--got)}
+.as.blocked{background:var(--miss-bg);color:var(--miss);outline:1px dashed #b3b8c0;outline-offset:-1px}
+.as.review{background:var(--pend-bg);color:var(--pend)}
+.as.note{background:#eef1f5;color:var(--ink2)}
+.act .dep{margin-top:6px;font-size:11.5px;color:var(--ink3);display:flex;gap:4px;align-items:flex-start}
+
+/* compact row */
+.crow{display:grid;grid-template-columns:118px minmax(0,1fr) 16px minmax(0,1fr) 16px minmax(0,.85fr) 18px;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin-bottom:5px;font-size:12.5px;cursor:pointer;text-align:left;width:100%}
+.crow:hover{border-color:#9aa3b0}
+.crow .ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.crow .blk{display:flex;align-items:center;gap:5px;font-weight:700;white-space:nowrap}
+.crow .muted{color:var(--ink3)}
+.crow .arr{color:#9aa3b0}
+.sec{margin:16px 0 6px;display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink2)}
+.sec .n{font-weight:400;color:var(--ink3)}
+.sec:after{content:"";flex:1;height:1px;background:var(--line)}
+.expwrap{margin-bottom:8px}
+.expwrap .collapse{border:0;background:transparent;color:var(--ink3);font-size:11.5px;padding:0 0 4px;text-decoration:underline}
+
+/* check mode summary */
+.csum{display:grid;grid-template-columns:repeat(3,1fr) auto;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:6px;align-items:center}
+.csum .lvbox{display:flex;flex-direction:column;gap:4px}
+.csum .lvbox .top{display:flex;align-items:center;gap:6px;font-size:12px}
+.csum .lvbox .top b{font-size:18px;line-height:1}
+.bar{height:6px;background:#eceff3;border-radius:3px;overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.bar i.d{background:var(--got)}
+.bar i.a{background:repeating-linear-gradient(45deg,var(--got) 0 3px,#9cc6e2 3px 6px)}
+.big-export{border:0;background:var(--navy);color:#fff;font-weight:700;padding:9px 14px;border-radius:6px;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.chkcol{position:absolute;left:-14px;top:8px;width:10px;height:10px;border-radius:50%}
+.review-note{font-size:12px;color:var(--ink2);margin:4px 0 0}
+
+/* ---------- side panel ---------- */
+.side h3{font-size:13.5px;margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.side h3 .sub{font-weight:400;font-size:11.5px;color:var(--ink3);margin-left:auto}
+.ritem{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 0;border-top:1px solid var(--line2);cursor:pointer}
+.ritem:hover{background:#f8f9fb}
+.ritem .rk{width:22px;height:22px;border-radius:50%;background:#eef1f5;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+.ritem.r1 .rk{background:var(--must);color:#fff}
+.ritem .rt{font-weight:700;font-size:12.5px;line-height:1.4}
+.ritem .rd{font-size:11.5px;color:var(--ink2);margin-top:2px}
+.ritem .badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;align-items:center}
+.cd{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--must);color:var(--must);border-radius:4px;padding:1px 6px 1px 3px;font-size:11px;font-weight:700}
+.cd .ring{width:18px;height:18px}
+.cd .num{font:700 13px/1 var(--mono)}
+.tiny{font-size:10.5px;color:var(--ink3)}
+
+.grid{width:100%;border-collapse:separate;border-spacing:3px;margin:0 -3px;font-size:12px}
+.grid th{font-size:11px;color:var(--ink3);font-weight:600;text-align:center;padding:2px}
+.grid th:first-child{text-align:left}
+.grid td.bn{font-weight:600;white-space:nowrap;padding-right:4px}
+.gc{border-radius:4px;padding:3px 6px;text-align:center;position:relative;cursor:pointer;height:34px;vertical-align:middle;border:1px solid transparent}
+.gc .pc{font:700 12px/1 var(--mono)}
+.gc .fr{font-size:10px;color:var(--ink2);line-height:1.2}
+.gc.na{background:repeating-linear-gradient(135deg,#f4f5f7 0 4px,#fff 4px 8px);color:#b0b5bd;cursor:default}
+.gc.c100{background:var(--got-bg);border-color:#9cc6e2;color:var(--got)}
+.gc.cmid{background:var(--pend-bg);border-color:#e5b46e;color:#7a4300}
+.gc.c0{background:#fff;border:1.5px dashed #a9afb8;color:#5c626c}
+.gc:not(.na):hover{outline:2px solid var(--navy)}
+.gtot td{border-top:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;color:var(--ink2);margin-top:6px}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+.panelsep{height:1px;background:var(--line);margin:14px -14px}
+.gtip{font-size:12px;background:#f5f7fa;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:8px}
+.gtip ul{margin:4px 0 0;padding:0;list-style:none}
+.gtip li{display:flex;gap:6px;align-items:flex-start;padding:1px 0}
+
+/* ---------- live bar ---------- */
+.live{background:#0f1a2b;color:#d8dee8;display:flex;align-items:center;gap:12px;padding:0 16px;font-size:12px;min-width:0}
+.rec{display:flex;align-items:center;gap:6px;font-weight:700;color:#fff;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:#ff5a4f;box-shadow:0 0 0 3px rgba(255,90,79,.25);animation:pulse 1.4s infinite}
+.paused .dot{background:#9aa3b0;box-shadow:none;animation:none}
+@keyframes pulse{50%{opacity:.35}}
+.timer{font-family:var(--mono)}
+.wave{display:flex;gap:2px;align-items:center;height:18px}
+.wave i{width:3px;background:#5fb3e6;border-radius:2px;animation:wv 1s infinite ease-in-out}
+.paused .wave i{animation:none;height:3px!important;background:#56606e}
+@keyframes wv{0%,100%{height:4px}50%{height:16px}}
+.latest{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#aab4c3}
+.latest b{color:#fff;font-weight:600}
+.spk{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;border-radius:3px;line-height:17px}
+.spk.officer{background:#3d4f6b;color:#fff}
+.spk.victim{background:#e8dcc0;color:#3a2a00}
+.lbtn{border:1px solid #3a4a62;background:#1b2a42;color:#fff;border-radius:4px;padding:4px 10px;font-size:12px;display:flex;align-items:center;gap:5px;white-space:nowrap}
+
+/* ---------- drawer ---------- */
+.drawer{position:fixed;right:0;top:52px;bottom:40px;width:440px;background:#fff;border-left:1px solid var(--line);box-shadow:-12px 0 30px rgba(15,26,43,.15);transform:translateX(105%);transition:transform .22s ease;z-index:30;display:flex;flex-direction:column}
+.drawer.open{transform:none}
+.dh{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.dh h3{margin:0;font-size:14px}
+.dh .x{margin-left:auto;border:0;background:transparent;font-size:18px;line-height:1;padding:2px 6px}
+.dmeta{padding:8px 14px;font-size:11.5px;color:var(--ink2);background:#f8f9fb;border-bottom:1px solid var(--line2);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tlist{overflow:auto;flex:1;padding:6px 0}
+.tl-line{display:grid;grid-template-columns:62px 64px 1fr;gap:6px;padding:6px 14px;font-size:13px;border-left:3px solid transparent}
+.tl-line .tm{font:11px/20px var(--mono);color:var(--ink3)}
+.tl-line.hl{background:#fff8d6;border-left-color:#e0b800}
+.tl-line .spkbtn{border:0;padding:0;background:transparent;text-align:left;align-self:start}
+.tl-line .spkbtn .spk{cursor:pointer}
+.tl-line .spkbtn:hover .spk{outline:2px solid #e0b800}
+.fixed{font-size:10px;color:#8a6d00;display:block;margin-top:2px}
+.lowconf{font-size:10px;color:#a85d00;display:block;margin-top:2px}
+.listening{padding:8px 14px 14px;color:var(--ink3);font-size:12px;display:flex;gap:8px;align-items:center}
+
+/* ---------- blame popover ---------- */
+.pop{position:fixed;z-index:40;width:400px;background:#fff;border:1px solid #c6ccd5;border-radius:8px;box-shadow:0 10px 30px rgba(15,26,43,.22);padding:10px 12px;display:none;font-size:12.5px}
+.pop.show{display:block}
+.pop .ph{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink3);margin-bottom:6px}
+.pop .ph b{color:var(--ink)}
+.pop .pl{display:grid;grid-template-columns:58px 56px 1fr;gap:6px;padding:5px 0;border-top:1px solid var(--line2)}
+.pop .pl .tm{font:11px/20px var(--mono);color:var(--ink3)}
+.pop .orig{margin-top:6px;padding:6px 8px;background:#fff8d6;border-radius:4px;font-size:12px}
+.pop .pf{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.pop .pf button{border:1px solid var(--line);background:#fff;border-radius:4px;padding:3px 8px;font-size:12px}
+
+/* ---------- modal ---------- */
+.modal{position:fixed;inset:0;background:rgba(15,26,43,.55);z-index:50;display:none;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.mbox{width:min(880px,92vw);height:min(820px,90vh);background:#e9ecf0;border-radius:10px;display:flex;flex-direction:column;overflow:hidden}
+.mh{background:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+.mh h3{margin:0;font-size:15px}
+.mbody{flex:1;overflow:auto;padding:20px;display:flex;gap:16px;align-items:flex-start}
+.paper{background:#fff;width:600px;flex:none;min-height:100%;padding:44px 52px;box-shadow:0 2px 8px rgba(0,0,0,.12);font-family:"BiauKai","DFKai-SB","Kaiti TC","PingFang TC","Noto Serif TC",serif;font-size:14px;line-height:1.9;position:relative}
+.paper h1{text-align:center;font-size:22px;letter-spacing:.3em;margin:0 0 4px}
+.paper .wm{position:absolute;top:14px;right:18px;font-family:var(--font);font-size:11px;color:#a85d00;border:1px solid #e5b46e;padding:1px 6px;border-radius:3px}
+.paper table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0 16px}
+.paper td{border:1px solid #444;padding:4px 8px}
+.paper td.k{width:90px;background:#f4f4f4;text-align:center}
+.paper .qa{margin:0 0 6px;display:grid;grid-template-columns:28px 1fr}
+.paper .qa b{font-weight:700}
+.paper .gap{color:#a85d00;background:#fff4e0;font-family:var(--font);font-size:12px;border:1px dashed #e5b46e;padding:4px 8px;border-radius:4px;margin:8px 0}
+.paper .sig{margin-top:30px;display:flex;justify-content:space-between;font-size:13px}
+.mside{flex:1;min-width:180px;font-size:12.5px}
+.mside .box{background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.mside h4{margin:0 0 6px;font-size:13px}
+.mside li{margin-bottom:4px}
+.mf{background:#fff;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--line);align-items:center}
+.mf .note{margin-right:auto;font-size:11.5px;color:var(--ink3)}
+.mf button{border:1px solid var(--line);background:#fff;border-radius:5px;padding:6px 12px}
+.mf button.pri{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:700}
+
+.toast{position:fixed;left:50%;bottom:56px;transform:translateX(-50%);background:#16243a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12.5px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+
+@media (max-width:1360px){
+  main{grid-template-columns:minmax(0,1fr) 340px}
+  .tl-side{flex-basis:170px}
+  .caseinfo .opt,.brand small{display:none}
+  header{gap:12px}
+  .chip{padding:6px 7px}
+  .chip .open{font-size:10.5px}
+}
+</style>
+</head>
+<body>
+
+<!-- SVG symbols -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-got" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.6 8.2l2.2 2.2 4.6-4.8" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pend" viewBox="0 0 16 16"><path d="M8 1.2l7 12.6H1z" fill="currentColor"/><path d="M8 6v3.6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.8" r="1" fill="#fff"/></symbol>
+    <symbol id="i-miss" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.6 2"/><path d="M6.2 6.3a1.9 1.9 0 113 1.5c-.7.4-1.2.8-1.2 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.3" r=".8" fill="currentColor"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 22 16"><path d="M1 8h17M13 3l6 5-6 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10.3 10.3L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 16 16"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="currentColor"/><path d="M3.2 7.5a4.8 4.8 0 009.6 0M8 12.4V15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8h5M5.5 10.5h5M5.5 5.5h2.5" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 16 16"><path d="M2 3.5h12v7.5H7l-3.5 3v-3H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-skip" viewBox="0 0 16 16"><path d="M3 4l5 4-5 4zM9 4l5 4-5 4z" fill="currentColor"/></symbol>
+    <symbol id="i-blame" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 6v4M5.6 10.6C9 10 12 10 12 9" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.5 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 16 16"><rect x="4" y="3" width="3" height="10" rx="1" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.5 2.8l9 5.2-9 5.2z" fill="currentColor"/></symbol>
+    <symbol id="i-swap" viewBox="0 0 16 16"><path d="M2.5 5h10l-2.5-2.5M13.5 11h-10l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="M5.2 7V5a2.8 2.8 0 015.6 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M9 1L3 9h4l-1 6 6-8H8z" fill="currentColor"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4.3c0 3.3-2.4 5.7-5.5 6.7-3.1-1-5.5-3.4-5.5-6.7V3.5z" fill="currentColor"/></symbol>
+  </defs>
+</svg>
+
+<header>
+  <div class="brand">
+    <svg class="ico" style="width:18px;height:18px;color:#ffd75e"><use href="#i-search"/></svg>
+    筆錄輔助 <small>偵查線索儀表板</small>
+  </div>
+  <div class="caseinfo">
+    <span>案類 <b>假投資詐欺</b></span>
+    <span>被害人 <b>林○○</b>（52）</span>
+    <span class="opt">詢問開始 <b>2026-10-05 14:02</b></span>
+  </div>
+  <span class="fict" title="本畫面所有姓名、帳號、ID、APP 名稱與案情皆為虛構">全部資料為虛構・介面原型</span>
+  <div class="spacer"></div>
+  <div class="seg" role="tablist" aria-label="顯示模式">
+    <button id="m-live" class="on" role="tab"><svg class="ico"><use href="#i-chat"/></svg>詢問中</button>
+    <button id="m-check" role="tab"><svg class="ico"><use href="#i-check"/></svg>簽名前檢查</button>
+  </div>
+  <button class="btn-export" id="hdrExport"><svg class="ico"><use href="#i-doc"/></svg>匯出筆錄草稿（Word）</button>
+</header>
+
+<section class="tl" aria-label="案情時序">
+  <div class="tl-label">案情時序</div>
+  <div class="chips" id="chips"></div>
+  <div class="tl-side">
+    <div class="sum">已知交付 <b>NT$350,000</b> ＋ USDT 金額？</div>
+    <button class="contra" id="contraBtn">
+      <svg class="ico" style="color:var(--pend)"><use href="#i-pend"/></svg>
+      <span><b>矛盾提示</b>：自述「大概 40 萬」，但 #1＋#2＝35 萬，#3 未知</span>
+    </button>
+  </div>
+</section>
+
+<main>
+  <section class="board" id="board" aria-label="線索鏈"></section>
+  <aside class="side" id="side"></aside>
+</main>
+
+<footer class="live" id="live">
+  <div class="rec"><span class="dot"></span><span id="recLbl">錄音中</span> <span class="timer" id="timer">00:11:23</span></div>
+  <div class="wave" aria-hidden="true"><i style="animation-delay:0s"></i><i style="animation-delay:.15s"></i><i style="animation-delay:.3s"></i><i style="animation-delay:.45s"></i><i style="animation-delay:.6s"></i><i style="animation-delay:.2s"></i></div>
+  <span style="display:flex;gap:4px;align-items:center;color:#8fa0b8;white-space:nowrap"><svg class="ico"><use href="#i-mic"/></svg>單一桌面麥克風</span>
+  <div class="latest" id="latest"></div>
+  <button class="lbtn" id="pauseBtn"><svg class="ico"><use href="#i-pause"/></svg>暫停</button>
+  <button class="lbtn" id="openDrawer"><svg class="ico"><use href="#i-chat"/></svg>逐字稿・更正說話者</button>
+</footer>
+
+<aside class="drawer" id="drawer" aria-label="即時逐字稿">
+  <div class="dh">
+    <svg class="ico" style="color:#ff5a4f"><use href="#i-mic"/></svg>
+    <h3>即時逐字稿</h3>
+    <span class="tiny">（節錄）</span>
+    <button class="x" id="closeDrawer" aria-label="關閉">×</button>
+  </div>
+  <div class="dmeta">
+    <span>收音：單一桌面麥克風</span>
+    <span>說話者：<span class="spk officer">員警</span> <span class="spk victim">被害人</span></span>
+    <span style="width:100%;color:var(--ink3)">點說話者標籤可更正（員警 ⇄ 被害人）；更正會同步到筆錄草稿。</span>
+  </div>
+  <div class="tlist" id="tlist"></div>
+</aside>
+
+<div class="pop" id="pop"></div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="mbox">
+    <div class="mh">
+      <svg class="ico"><use href="#i-doc"/></svg>
+      <h3>筆錄草稿預覽（問答格式）</h3>
+      <span class="tiny">由逐字稿節錄自動排版・匯出後仍須員警逐句核對</span>
+      <div class="spacer"></div>
+    </div>
+    <div class="mbody">
+      <div class="paper" id="paper"></div>
+      <div class="mside" id="mside"></div>
+    </div>
+    <div class="mf">
+      <span class="note">原型：不會真的產生 .docx 檔案</span>
+      <button id="copyDraft">複製文字</button>
+      <button id="closeModal">返回檢查</button>
+      <button class="pri" id="fakeDl"><svg class="ico"><use href="#i-doc"/></svg> 下載 .docx</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 資料（全部虛構，取自 mock-case.md） ================= */
+const T = [
+  ['t1','14:02:10','officer','林小姐，請您從頭說，一開始是怎麼接觸到對方的？'],
+  ['t2','14:02:25','victim','九月三號晚上吧，我在臉書看到一個投資的廣告，點進去就加了一個 LINE，叫陳老師。'],
+  ['t3','14:03:05','officer','那個 LINE 的 ID 您還記得嗎？'],
+  ['t4','14:03:12','victim','有，我手機裡還有，是 invest_chen888。'],
+  ['t5','14:03:40','victim','他把我拉進一個群組叫財富自由學院，裡面兩百多個人，每天都有人貼賺錢的截圖。'],
+  ['t6','14:04:30','victim','陳老師說跟著他做，每個月保證賺兩成，叫我下載一個 APP 叫鼎盛國際。'],
+  ['t7','14:06:02','officer','第一次匯錢是什麼時候？'],
+  ['t8','14:06:15','victim','九月十號下午兩點多，我用網銀轉了五萬，轉到一個王什麼的帳戶。'],
+  ['t9','14:08:40','officer','後來還有再給錢嗎？'],
+  ['t10','14:08:52','victim','有，十八號晚上七點半左右，他說要面交，叫我拿三十萬到竹北一間便利商店前面。'],
+  ['t11','14:09:30','officer','來拿錢的人長什麼樣子？'],
+  ['t12','14:09:41','victim','一個年輕男生，二十幾歲吧，戴黑色口罩、穿灰色帽 T，騎機車來的，車牌我沒注意。'],
+  ['t13','14:10:20','victim','他有拿一個工作證給我看，寫鼎盛國際外派專員，還開了一張收據給我。'],
+  ['t14','14:11:05','victim','後來又買了一次 USDT 轉過去。'],
+  ['t15','14:12:30','officer','什麼時候發現被騙的？'],
+  ['t16','14:12:41','victim','二十八號我想把錢領出來，APP 說要先繳十五萬保證金，我才覺得不對。'],
+  ['t17','14:13:10','victim','總共大概被騙了四十萬吧。'],
+].map(([id,time,spk,text])=>({id,time,spk,text,fixed:false,low:id==='t14'}));
+const TM = Object.fromEntries(T.map(t=>[t.id,t]));
+
+const ST = {got:['已取得','i-got'], pend:['待確認','i-pend'], miss:['尚未提及','i-miss']};
+const LV = {must:['必要','i-shield'], lead:['偵查線索','i-search'], supp:['補充','']};
+const AS = {urgent:['最優先・可立即執行','i-bolt'], ready:['可執行','i-check'], blocked:['待補資訊','i-lock'], review:['已問・待核對回答','i-pend'], note:['記入犯罪事實','i-doc']};
+
+const BLOCKS = [
+  {id:'contact', name:'接觸', r2:'9/03 晚・FB 廣告 → LINE', status:'got'},
+  {id:'trust', name:'取得信任', r2:'群組報明牌・保證月獲利 20%', status:'got'},
+  {id:'pay1', name:'交付 #1', r2:'9/10 網銀轉帳', amt:'NT$50,000', status:'pend', pay:true},
+  {id:'pay2', name:'交付 #2', r2:'9/18 面交', amt:'NT$300,000', status:'pend', pay:true},
+  {id:'pay3', name:'交付 #3', r2:'USDT・日期？', amt:'金額？', status:'miss', pay:true},
+  {id:'found', name:'發現受騙', r2:'9/28 出金被要求保證金', status:'got'},
+  {id:'second', name:'二次詐騙', r2:'尚未詢問', status:'miss'},
+];
+const BN = {contact:'接觸',trust:'取得信任',pay1:'交付 #1',pay2:'交付 #2',pay3:'交付 #3',found:'發現受騙',second:'二次詐騙',loss:'損害'};
+
+// 句子標記：[t|時間] [m|金額] [a|帳號] [i|ID] [p|地點]
+let sid=0; const S=(text,src,status='got')=>({id:'s'+(++sid),text,orig:text,src,status,edited:false});
+const CHAINS = [
+  {id:'c1', block:'pay2', prio:1, level:'lead', fst:'pend',
+    facts:[S('車手出示「[i|鼎盛國際]外派專員」工作證，並開立收據',['t13'])],
+    miss:[['收據目前在哪裡、是否碰觸過','miss']],
+    q:'面交時拿到的收據現在在哪裡？交付時您有沒有摸過？', why:'收據可能留有車手姓名或指紋，可採證比對',
+    act:{t:'採集收據指紋／比對車手姓名', d:'收據送鑑識採證；與工作證上姓名交叉比對', st:'blocked', dep:'需先問出收據下落'}},
+  {id:'c2', block:'pay3', prio:2, level:'must', fst:'miss',
+    facts:[S('被害人只說「後來又買了一次 [i|USDT] 轉過去」',['t14'],'pend')],
+    miss:[['日期、金額、購幣方式、錢包地址、TxID','miss']],
+    q:'第三次買 USDT 是哪一天、多少錢？向誰買、轉到哪個錢包地址？', why:'「交付財物」為構成要件；錢包地址可追查鏈上金流至交易所',
+    act:{t:'追查鏈上金流至交易所', d:'以錢包地址／TxID 追蹤流向，函請交易所提供實名資料', st:'blocked', dep:'需錢包地址或 TxID'}},
+  {id:'c3', block:'pay1', prio:3, level:'lead', fst:'pend',
+    facts:[S('[t|2026-09-10 14:20]，網路銀行轉帳 [m|NT$50,000]',['t7','t8']), S('轉入帳號：[a|822-0000-1234-5678]（虛構），戶名：王○○',['t8'])],
+    miss:[['交易序號','miss']],
+    q:'9/10 那筆轉帳的交易序號或轉帳截圖還在嗎？', why:'據以函調帳戶交易明細、通報警示帳戶',
+    act:{t:'函調帳戶交易明細、通報警示帳戶', d:'帳號 822-0000-1234-5678（虛構）', st:'ready', dep:'帳號已取得，可先通報；序號用於精準調閱'}},
+  {id:'c4', block:'pay2', prio:4, level:'lead', fst:'pend',
+    facts:[S('[t|2026-09-18 約 19:30]，[p|竹北市○○路便利商店前]',['t9','t10']), S('交付現金 [m|NT$300,000]',['t10'])],
+    miss:[['交付時是否與他人通話','miss']],
+    q:'面交時車手有沒有一邊講電話？', why:'調閱通聯，連結車手與機房',
+    act:{t:'調閱通聯紀錄', d:'以面交時間、地點調閱基地台通聯，連結車手與機房', st:'blocked', dep:'需確認車手是否通話'}},
+  {id:'c5', block:'loss', prio:5, level:'must', fst:'pend',
+    facts:[S('被害人自述「總共大概被騙 [m|40 萬]」',['t17'],'pend'), S('交付 #1＋#2＝[m|35 萬]，交付 #3 金額未知',['t8','t10'],'pend')],
+    miss:[['自述總額與各筆交付不一致','pend']],
+    q:'總共被騙的金額是多少？跟每一筆對得起來嗎？', why:'確認損害金額一致，避免筆錄矛盾',
+    act:{t:'核定損害金額', d:'報告書犯罪事實與各筆交付金額一致', st:'blocked', dep:'需交付 #3 金額'}},
+  {id:'c6', block:'second', prio:6, level:'supp', fst:'miss',
+    facts:[],
+    miss:[['報案前後是否有人聲稱可協助追回款項','miss']],
+    q:'報案前後，有沒有人說可以幫您追回款項？', why:'防範二次詐騙，可能涉及另案',
+    act:{t:'提醒防範／另案通報', d:'如有「代辦追回」接觸，另行受理或通報', st:'blocked', dep:'視回答而定'}},
+  {id:'c7', block:'pay2', prio:90, level:null, fst:'got',
+    facts:[S('車手：男性、約 20 多歲、黑色口罩、灰色連帽外套、騎機車',['t11','t12']), S('機車車牌：被害人表示「沒注意」',['t12'],'pend')],
+    miss:[],
+    q:null, noq:'時間、地點、外貌已足以調閱，無需再追問',
+    act:{t:'調閱監視器（9/18 19:00–20:00）', d:'竹北市○○路便利商店及周邊', st:'urgent', dep:'監視器有保存期限'}},
+  {id:'c8', block:'contact', prio:91, level:null, fst:'got',
+    facts:[S('[t|2026-09-03 晚上]，在 Facebook 看到投資廣告',['t2']), S('點廣告後加入 LINE 好友「陳老師」，LINE ID：[i|invest_chen888]',['t2','t3','t4']), S('被拉進 LINE 群組「財富自由學院」（約 200 人）',['t5'])],
+    miss:[], q:null, noq:'接觸管道與帳號 ID 已取得',
+    act:{t:'調閱 LINE 帳號資料', d:'LINE ID invest_chen888', st:'ready'}},
+  {id:'c9', block:'trust', prio:92, level:null, fst:'got',
+    facts:[S('「陳老師」每天在群組報明牌，群組內其他人一直貼獲利截圖',['t5','t6']), S('對方保證每月獲利 [m|20%]',['t6']), S('要求下載投資 APP「[i|鼎盛國際]」並註冊帳號',['t6'])],
+    miss:[], q:null, noq:'詐術內容與 APP 名稱已取得',
+    act:{t:'調閱 APP 下載來源／網域資料', d:'「鼎盛國際」APP', st:'ready'}},
+  {id:'c10', block:'found', prio:93, level:null, fst:'got',
+    facts:[S('[t|2026-09-28] 想出金，APP 顯示需先繳「保證金」[m|15 萬]，才發現被騙',['t15','t16'])],
+    miss:[], q:null, noq:'發現受騙經過已取得',
+    act:{t:'記入報告書犯罪事實', d:'完整描述犯罪經過', st:'note'}},
+];
+const CM = Object.fromEntries(CHAINS.map(c=>[c.id,c]));
+
+const RETRIEVE = [
+  {chain:'c7', t:'竹北市○○路便利商店及周邊監視器', d:'9/18 19:00–20:00', due:13, tags:[['as urgent','最優先']]},
+  {chain:'c3', t:'帳號 822-0000-1234-5678 交易明細、通報警示帳戶', d:'帳號已取得；交易序號待補', tags:[['as ready','可立即函調'],['as review','序號待補']]},
+  {chain:'c8', t:'LINE ID invest_chen888 帳號資料', d:'向平台業者調閱', tags:[['as ready','可發函']]},
+  {chain:'c9', t:'「鼎盛國際」APP 下載來源／網域資料', d:'下載連結、網域註冊資料', tags:[['as ready','可發函']]},
+];
+
+// 檢核表：[項目, 已取得?, 關聯線索鏈]
+const CHECK = [
+  ['contact', {must:[['初次接觸時間、管道',1]], lead:[['對方帳號 ID、暱稱、APP 名稱',1]]}],
+  ['trust',   {must:[['自稱身分、說詞與承諾',1],['因何相信對方',1]]}],
+  ['pay1',    {must:[['日期時間、方式、金額',1]], lead:[['轉入帳號與戶名',1],['交易序號',0,'c3']]}],
+  ['pay2',    {must:[['日期時間、方式、金額',1]], lead:[['確切時間、地點',1],['車手外貌、衣著、交通工具',1],['工作證、收據',1],['收據下落、是否碰觸',0,'c1'],['交付時是否通話',0,'c4']]}],
+  ['pay3',    {must:[['日期、金額',0,'c2']], lead:[['購幣方式、交易所',0,'c2'],['錢包地址、TxID',0,'c2']]}],
+  ['found',   {must:[['發現受騙時間與經過',1]]}],
+  ['second',  {supp:[['是否有人聲稱可追回款項',0,'c6']]}],
+  ['loss',    {must:[['損失總額並與各筆核對',0,'c5']]}],
+];
+
+/* ================= 狀態 ================= */
+const state = {
+  mode: location.hash==='#check' ? 'check' : 'live',
+  filter: null,
+  q: Object.fromEntries(CHAINS.filter(c=>c.q).map(c=>[c.id,{s:'todo',reason:'',at:''}])),
+  expanded: new Set(),
+  gridSel: null,
+  paused:false,
+};
+
+/* ================= helpers ================= */
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const KN = {t:'時間',m:'金額',a:'帳號',i:'帳號／ID／名稱',p:'地點'};
+const hl = s=>esc(s).replace(/\[([tmaip])\|([^\]]+)\]/g,(_,k,v)=>`<mark class="k k-${k}" title="${KN[k]}">${v}</mark>`);
+const plain = s=>s.replace(/\[([tmaip])\|([^\]]+)\]/g,'$2');
+const ico = (id,style='')=>id?`<svg class="ico" style="${style}"><use href="#${id}"/></svg>`:'';
+const stPill = s=>`<span class="st ${s}">${ico(ST[s][1])}<span class="lbl">${ST[s][0]}</span></span>`;
+const lvTag = l=>l?`<span class="lv ${l}">${ico(LV[l][1],'width:11px;height:11px')}${LV[l][0]}</span>`:'';
+const spk = s=>`<span class="spk ${s}">${s==='officer'?'員警':'被害人'}</span>`;
+function actState(c){ const q=state.q[c.id]; if(q&&q.s==='asked'&&c.act.st==='blocked') return 'review'; return c.act.st; }
+function chainStatus(c){ const q=state.q[c.id]; if(!q) return c.fst; if(q.s==='asked') return 'pend'; return c.fst; }
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('show'),1800); }
+function nowStamp(){ const base=14*3600+13*60+33; const s=base+tick; return [Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(n=>String(n).padStart(2,'0')).join(':'); }
+
+/* ================= timeline chips ================= */
+function openCount(bid){ return CHAINS.filter(c=>c.block===bid && state.q[c.id] && state.q[c.id].s==='todo').length; }
+function renderChips(){
+  $('#chips').innerHTML = BLOCKS.map((b,i)=>{
+    const n=openCount(b.id);
+    return (i?'<div class="conn"></div>':'')+
+    `<button class="chip ${b.status} ${b.pay?'pay':''} ${state.filter===b.id?'sel':''}" data-b="${b.id}" title="篩選此區塊的線索鏈" style="${b.pay?`border-top-color:${b.status==='miss'?'#a9afb8':'var(--k-m-b)'}`:''}">
+      <div class="r1">${ico(ST[b.status][1],`color:var(--${b.status==='got'?'got':b.status==='pend'?'pend':'miss'})`)}${b.name}</div>
+      <div class="r2">${b.amt?`<span class="amt">${b.amt}</span>・`:''}${b.r2}</div>
+      <div class="r3">${stPill(b.status)}${n?`<span class="open">${n} 項待問</span>`:''}</div>
+    </button>`;
+  }).join('');
+}
+
+/* ================= board ================= */
+function factCell(c){
+  const s=chainStatus(c);
+  const q=state.q[c.id];
+  const sents=c.facts.map(f=>`<li class="sent ${f.edited?'edited':''}" data-s="${f.id}">
+      ${f.status==='pend'?ico('i-pend','color:var(--pend);margin-top:3px'):''}
+      <span class="txt" contenteditable="true" spellcheck="false" data-s="${f.id}">${f.html||hl(f.text)}</span>
+      <span class="ed">已修改</span>
+      <button class="src" data-s="${f.id}" title="點擊查看來源原話">${ico('i-blame','width:10px;height:10px')}${TM[f.src[f.src.length-1]].time}${f.src.length>1?` +${f.src.length-1}`:''}</button>
+    </li>`).join('');
+  const miss=c.miss.map(([m,ms])=>{
+    const asked=q&&q.s==='asked', skipped=q&&q.s==='skipped';
+    const cls=asked?'asked':ms==='pend'?'pend':'';
+    const lbl=asked?'已問・待逐字稿確認':skipped?'略過'+(q.reason?`（${q.reason}）`:''):(ms==='pend'?'待確認':'尚未提及');
+    return `<div class="miss-it ${cls}">${ico(asked?'i-chat':ST[ms][1],`margin-top:2px;color:${asked?'var(--got)':ms==='pend'?'var(--pend)':'var(--miss)'}`)}<span><b>${lbl}</b>：${esc(m)}</span></div>`;
+  }).join('');
+  return `<div class="cell fact ${s}">
+    <div class="cell-h"><span class="ttl">案情事實</span>・${BN[c.block]}<span class="rt">${stPill(s)}</span></div>
+    ${sents?`<ul class="sents">${sents}</ul>`:''}${miss}
+  </div>`;
+}
+function askCell(c, idx){
+  if(!c.q) return `<div class="cell ask"><div class="cell-h"><span class="ttl">追問建議</span></div><div class="noq">${ico('i-got','color:var(--got)')}${esc(c.noq)}</div></div>`;
+  const q=state.q[c.id];
+  let btns;
+  if(q.s==='todo') btns=`<button class="qb pri" data-act="ask" data-c="${c.id}">${ico('i-check')}已問</button><button class="qb" data-act="skip" data-c="${c.id}">${ico('i-skip','width:11px')}略過</button>`;
+  else if(q.s==='asked') btns=`<span class="qstate asked">${ico('i-check')}已問 ${q.at}</span><button class="qb undo" data-act="undo" data-c="${c.id}">復原</button>`;
+  else btns=`<span class="qstate skipped">${ico('i-skip','width:11px')}已略過</span>
+      <select class="reason" data-c="${c.id}" aria-label="略過原因"><option value="">— 略過原因（簽名前須註記）—</option>${['被害人不記得','已由其他問題涵蓋','不適用本案','稍後再問'].map(r=>`<option ${q.reason===r?'selected':''}>${r}</option>`).join('')}</select>
+      <button class="qb undo" data-act="undo" data-c="${c.id}">復原</button>`;
+  return `<div class="cell ask ${c.level} ${q.s}">
+    <div class="cell-h">${lvTag(c.level)}<span class="ttl">追問建議 ${idx?'#'+idx:''}</span><span class="rt" style="color:var(--ink3)">優先 ${c.prio}</span></div>
+    <p class="q">${esc(c.q)}</p>
+    <p class="why"><b>為什麼要問</b><span>${esc(c.why)}</span></p>
+    <div class="qbtns">${btns}</div>
+  </div>`;
+}
+function actCell(c){
+  const a=actState(c);
+  return `<div class="cell act">
+    <div class="cell-h"><span class="ttl">偵查行動</span><span class="rt"><span class="as ${a}">${ico(AS[a][1],'width:11px;height:11px')}${AS[a][0]}</span></span></div>
+    <p class="act-t">${esc(c.act.t)}</p><p class="act-d">${esc(c.act.d)}</p>
+    ${c.act.dep?`<div class="dep">${ico(a==='blocked'?'i-lock':'i-clock','width:12px;height:12px;margin-top:2px')}<span>${esc(c.act.dep)}</span></div>`:''}
+  </div>`;
+}
+const ARROW = `<div class="arrow">${ico('i-arrow','width:20px;height:14px')}</div>`;
+function fullRow(c, idx){
+  const done=!c.q||state.q[c.id].s!=='todo';
+  return `<div class="chain ${done?'done':''}" id="row-${c.id}">${factCell(c)}${ARROW}${askCell(c,idx)}${ARROW}${actCell(c)}</div>`;
+}
+function compactRow(c){
+  if(state.expanded.has(c.id)) return `<div class="expwrap"><button class="collapse" data-col="${c.id}">收合</button>${fullRow(c)}</div>`;
+  const s=chainStatus(c), q=state.q[c.id], a=actState(c);
+  const fact=c.facts.length?plain(c.facts[0].text):c.miss[0][0];
+  const mid=c.q?`${lvTag(c.level)} <span>${esc(c.q)}</span>${q.s!=='todo'?` <span class="qstate ${q.s}" style="display:inline-flex">${q.s==='asked'?'已問':'已略過'}</span>`:''}`:`<span class="muted">無需追問</span>`;
+  return `<button class="crow" data-exp="${c.id}" id="row-${c.id}">
+    <span class="blk">${ico(ST[s][1],`color:var(--${s})`)}${BN[c.block]}</span>
+    <span class="ell">${esc(fact)}</span><span class="arr">→</span>
+    <span class="ell">${mid}</span><span class="arr">→</span>
+    <span class="ell"><span class="as ${a}" style="margin-right:4px">${AS[a][0]}</span>${esc(c.act.t)}</span>
+    ${ico('i-chev','color:var(--ink3)')}
+  </button>`;
+}
+const COLHDR = `<div class="colhdr"><span>案情事實（可編輯・點時間戳看原話）</span><span></span><span>追問建議 + 為什麼要問</span><span></span><span>偵查行動</span></div>`;
+
+function renderBoard(){
+  const b=$('#board'); let h='';
+  if(state.filter){
+    const list=CHAINS.filter(c=>c.block===state.filter);
+    h+=`<div class="filterbar">${ico('i-search')}篩選區塊：<b>${BN[state.filter]}</b>（${list.length} 條線索鏈）<span class="spacer"></span><button data-clear="1">清除篩選 ×</button></div>`+COLHDR;
+    h+=list.map(c=>fullRow(c)).join('') || '<p class="hint">此區塊尚無線索鏈。</p>';
+  } else if(state.mode==='live'){
+    const todo=CHAINS.filter(c=>c.q&&state.q[c.id].s==='todo').sort((a,b)=>a.prio-b.prio);
+    const top=todo.slice(0,3);
+    const rest=CHAINS.filter(c=>!top.includes(c)).sort((a,b)=>a.prio-b.prio);
+    h+=`<div class="bhead"><h2>${ico('i-chat')}現在建議追問</h2><span class="hint">只顯示最優先 ${top.length} 項・按「已問」後自動遞補</span></div>`;
+    h+= top.length? COLHDR+top.map((c,i)=>fullRow(c,i+1)).join('') : `<div class="cell" style="padding:14px">${ico('i-got','color:var(--got)')} 目前沒有待問的追問建議。可切換到「簽名前檢查」做最後複核。</div>`;
+    h+=`<div class="sec">其他線索鏈 <span class="n">${rest.length} 條・已收合，點一下展開</span></div>`;
+    h+=rest.map(compactRow).join('');
+  } else {
+    const groups=['must','lead','supp'].map(l=>{
+      const cs=CHAINS.filter(c=>c.level===l);
+      return {l,cs,todo:cs.filter(c=>state.q[c.id].s==='todo').length,asked:cs.filter(c=>state.q[c.id].s==='asked').length,skip:cs.filter(c=>state.q[c.id].s==='skipped').length};
+    });
+    const mustLeft=groups[0].todo;
+    h+=`<div class="bhead"><h2>${ico('i-check')}簽名前檢查</h2><span class="hint">對應「先請資深同仁檢視有無漏問，再讓被害人簽名」・依等級列出全部缺漏</span></div>`;
+    h+=`<div class="csum">${groups.map(g=>{const n=g.cs.length; return `<div class="lvbox"><div class="top">${lvTag(g.l)}<b>${g.todo}</b> 項未處理 <span class="tiny">／共 ${n}・已問 ${g.asked}・略過 ${g.skip}</span></div><div class="bar"><i class="a" style="width:${g.asked/n*100}%"></i><i style="width:${g.skip/n*100}%;background:#b8bec8"></i></div></div>`}).join('')}
+      <button class="big-export" data-export="1">${ico('i-doc')}匯出筆錄草稿（Word）</button></div>`;
+    if(mustLeft) h+=`<p class="review-note">${ico('i-pend','color:var(--pend)')} 尚有 <b>${mustLeft}</b> 項「必要」缺漏未處理：構成要件或報告書犯罪事實所需，建議簽名前補問。</p>`;
+    groups.forEach(g=>{
+      h+=`<div class="sec">${lvTag(g.l)} <span class="n">${{must:'犯罪構成要件、報告書犯罪事實所需',lead:'後續調閱、採證所需',supp:'防範與補充'}[g.l]}</span></div>`;
+      h+=COLHDR+g.cs.sort((a,b)=>a.prio-b.prio).map(c=>fullRow(c)).join('');
+    });
+    const ok=CHAINS.filter(c=>!c.q);
+    h+=`<div class="sec">${ico('i-got','color:var(--got)')} 資訊已完整 <span class="n">${ok.length} 條・可直接啟動偵查行動</span></div>`;
+    h+=ok.map(compactRow).join('');
+  }
+  b.innerHTML=h;
+}
+
+/* ================= side panel ================= */
+function gridData(){
+  return CHECK.map(([bid,lv])=>{
+    const row={bid,cells:{}};
+    ['must','lead','supp'].forEach(l=>{
+      const items=lv[l]; if(!items){row.cells[l]=null;return;}
+      let d=0,a=0; items.forEach(([n,ok,c])=>{ if(ok)d++; else if(c&&state.q[c].s==='asked')a++; });
+      row.cells[l]={items,d,a,n:items.length};
+    });
+    return row;
+  });
+}
+function renderSide(){
+  const gd=gridData();
+  const tot={must:[0,0,0],lead:[0,0,0],supp:[0,0,0]};
+  gd.forEach(r=>['must','lead','supp'].forEach(l=>{const c=r.cells[l]; if(c){tot[l][0]+=c.d;tot[l][1]+=c.a;tot[l][2]+=c.n;}}));
+  const cell=(c,key)=>{
+    if(!c) return `<td class="gc na">—</td>`;
+    const p=Math.round((c.d+c.a)/c.n*100);
+    const cls=p===100?'c100':p===0?'c0':'cmid';
+    return `<td class="gc ${cls}" data-g="${key}" title="點擊查看檢核項目"><div class="pc">${p}%</div><div class="fr">${c.d}${c.a?`+${c.a}問`:''}/${c.n}</div></td>`;
+  };
+  let sel='';
+  if(state.gridSel){
+    const [bid,l]=state.gridSel.split('|'); const r=gd.find(x=>x.bid===bid); const c=r&&r.cells[l];
+    if(c) sel=`<div class="gtip"><b>${BN[bid]}・${LV[l][0]}</b><ul>${c.items.map(([n,ok,ch])=>{
+      const asked=ch&&state.q[ch].s==='asked';
+      const s=ok?'got':asked?'pend':'miss';
+      return `<li>${ico(ST[s][1],`color:var(--${s});margin-top:2px`)}<span>${esc(n)}${ok?'':asked?'（已問・待確認）':''}${ch&&!ok?` <a href="#" data-goto="${ch}">→ 線索鏈</a>`:''}</span></li>`;}).join('')}</ul></div>`;
+  }
+  const dueRing=(d)=>{const f=Math.max(0,Math.min(1,d/30)); const C=2*Math.PI*7; return `<svg class="ring" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="none" stroke="#f3d3c3" stroke-width="3"/><circle cx="9" cy="9" r="7" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="${C*f} ${C}" transform="rotate(-90 9 9)"/></svg>`;};
+  $('#side').innerHTML = `
+    <h3>${ico('i-bolt','color:var(--must)')}應優先調閱清單<span class="sub">依時效排序</span></h3>
+    ${RETRIEVE.map((r,i)=>`<div class="ritem ${i===0?'r1':''}" data-goto="${r.chain}">
+      <div class="rk">${i+1}</div>
+      <div><div class="rt">${esc(r.t)}</div><div class="rd">${esc(r.d)}</div>
+        <div class="badges">${r.due!=null?`<span class="cd">${dueRing(r.due)}保存期限 約剩 <span class="num">${r.due}</span> 天</span>`:''}${r.tags.map(([c,t])=>`<span class="${c}">${t}</span>`).join('')}</div>
+        ${r.due!=null?`<div class="tiny" style="margin-top:3px">倒數為示意（以常見保存約 30 天、自 9/18 起算）</div>`:''}
+      </div></div>`).join('')}
+    <div class="panelsep"></div>
+    <h3>${ico('i-check')}檢核表<span class="sub">區塊 × 等級・覆蓋率</span></h3>
+    <table class="grid">
+      <thead><tr><th>區塊</th><th>${lvTag('must')}</th><th>${lvTag('lead')}</th><th>${lvTag('supp')}</th></tr></thead>
+      <tbody>${gd.map(r=>`<tr><td class="bn">${BN[r.bid]}</td>${['must','lead','supp'].map(l=>cell(r.cells[l],r.bid+'|'+l)).join('')}</tr>`).join('')}
+      <tr class="gtot"><td class="bn">合計</td>${['must','lead','supp'].map(l=>{const [d,a,n]=tot[l]; return `<td style="text-align:center;font:700 12px var(--mono)">${Math.round((d+a)/n*100)}%<div class="tiny" style="font-family:var(--font);font-weight:400">${d}${a?`+${a}問`:''}/${n}</div></td>`}).join('')}</tr></tbody>
+    </table>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--got-bg);border:1px solid #9cc6e2"></i>100%</span>
+      <span><i class="sw" style="background:var(--pend-bg);border:1px solid #e5b46e"></i>部分</span>
+      <span><i class="sw" style="border:1.5px dashed #a9afb8"></i>0%</span>
+      <span><i class="sw" style="background:repeating-linear-gradient(135deg,#f4f5f7 0 3px,#fff 3px 6px);border:1px solid #e3e5e8"></i>不適用</span>
+      <span>「+N問」＝已問、待逐字稿確認</span>
+    </div>
+    ${sel}
+    <div class="panelsep"></div>
+    <h3 style="margin-bottom:4px">關鍵字標示</h3>
+    <div class="legend" style="margin-top:0">
+      <span><mark class="k k-t">時間</mark></span><span><mark class="k k-m">金額</mark></span><span><mark class="k k-a">帳號</mark></span><span><mark class="k k-i">ID／名稱</mark></span><span><mark class="k k-p">地點</mark></span>
+    </div>
+    <div class="legend">${['got','pend','miss'].map(stPill).join('')}</div>`;
+}
+
+/* ================= transcript ================= */
+function renderTranscript(hlIds=[]){
+  $('#tlist').innerHTML = T.map(t=>`<div class="tl-line ${hlIds.includes(t.id)?'hl':''}" id="tr-${t.id}">
+    <span class="tm">${t.time}</span>
+    <button class="spkbtn" data-spk="${t.id}" title="點擊更正說話者">${spk(t.spk)}${t.fixed?'<span class="fixed">✎ 已更正</span>':t.low?'<span class="lowconf">⚠ 辨識信心低</span>':''}</button>
+    <span>${esc(t.text)}</span></div>`).join('') +
+    `<div class="listening">${state.paused?ico('i-pause'):'<span class="dot" style="width:7px;height:7px"></span>'}${state.paused?'已暫停收音':'收音中，等待下一句…'}</div>`;
+  const last=T[T.length-1];
+  $('#latest').innerHTML=`最新 <span style="font-family:var(--mono)">${last.time}</span> ${spk(last.spk)} <b>${esc(last.text)}</b>`;
+}
+function openDrawer(ids=[]){
+  renderTranscript(ids); $('#drawer').classList.add('open');
+  if(ids.length){ const el=$('#tr-'+ids[0]); el&&el.scrollIntoView({block:'center',behavior:'smooth'}); }
+}
+
+/* ================= blame popover ================= */
+function showBlame(btn){
+  const f=CHAINS.flatMap(c=>c.facts).find(x=>x.id===btn.dataset.s);
+  const pop=$('#pop');
+  document.querySelectorAll('.src.on').forEach(e=>e.classList.remove('on')); btn.classList.add('on');
+  pop.innerHTML=`<div class="ph">${ico('i-blame')}<span>此句來源：逐字稿 <b>${f.src.length}</b> 句</span><span style="margin-left:auto">${f.edited?'<span class="st pend">✎ 員警已手動修改</span>':'<span class="st got">系統整理・未修改</span>'}</span></div>
+    ${f.src.map(id=>{const t=TM[id]; return `<div class="pl"><span class="tm">${t.time}</span><span>${spk(t.spk)}</span><span>${esc(t.text)}</span></div>`}).join('')}
+    ${f.edited?`<div class="orig"><b>原句：</b>${hl(f.orig)}</div>`:''}
+    <div class="pf"><span class="tiny">點句子可直接編輯</span><span style="display:flex;gap:6px">${f.edited?`<button data-revert="${f.id}">還原原句</button>`:''}<button data-opentr="${f.src.join(',')}">在逐字稿中定位</button></span></div>`;
+  pop.classList.add('show');
+  const r=btn.getBoundingClientRect(); const pw=400, ph=pop.offsetHeight;
+  let left=Math.min(window.innerWidth-pw-12, Math.max(12,r.right-pw)); let top=r.bottom+6;
+  if(top+ph>window.innerHeight-48) top=r.top-ph-6;
+  pop.style.left=left+'px'; pop.style.top=top+'px';
+}
+function hideBlame(){ $('#pop').classList.remove('show'); document.querySelectorAll('.src.on').forEach(e=>e.classList.remove('on')); }
+
+/* ================= draft ================= */
+function buildDraft(){
+  const qa=[]; let cur=null;
+  T.forEach(t=>{ if(t.spk==='officer'){ cur={q:t.text,a:[]}; qa.push(cur);} else { if(!cur){cur={q:'（未錄得提問）',a:[]};qa.push(cur);} cur.a.push(t.text);} });
+  const pend=CHAINS.filter(c=>c.q&&state.q[c.id].s==='todo');
+  $('#paper').innerHTML=`<span class="wm">草稿・虛構資料</span>
+    <h1>調查筆錄</h1>
+    <table><tr><td class="k">詢問時間</td><td>2026 年 10 月 05 日 14 時 02 分起</td><td class="k">詢問地點</td><td>（待填）</td></tr>
+    <tr><td class="k">受詢問人</td><td>林○○（52 歲）</td><td class="k">案由</td><td>詐欺（假投資）</td></tr></table>
+    ${qa.map(x=>`<div class="qa"><b>問：</b><span>${esc(x.q)}</span></div><div class="qa"><b>答：</b><span>${esc(x.a.join('')||'（未錄得回答）')}</span></div>`).join('')}
+    ${pend.length?`<div class="gap">⚠ 以下追問尚未處理，草稿未含相關問答：${pend.map(c=>'〔'+LV[c.level][0]+'〕'+esc(c.q)).join('；')}</div>`:''}
+    <div class="qa"><b>問：</b><span>以上所述是否實在？有無補充？</span></div><div class="qa"><b>答：</b><span>（待受詢問人回答）</span></div>
+    <div class="sig"><span>受詢問人：＿＿＿＿＿（簽名）</span><span>詢問人：＿＿＿＿＿</span></div>`;
+  const must=pend.filter(c=>c.level==='must');
+  const fixed=T.filter(t=>t.fixed);
+  const edited=CHAINS.flatMap(c=>c.facts).filter(f=>f.edited);
+  $('#mside').innerHTML=`<div class="box"><h4>匯出前提醒</h4><ul style="margin:0;padding-left:18px">
+      <li>${must.length?`<b style="color:var(--must)">必要缺漏 ${must.length} 項</b>未處理`:'必要缺漏皆已處理'}</li>
+      <li>未處理追問共 ${pend.length} 項</li>
+      <li>略過項目 ${CHAINS.filter(c=>c.q&&state.q[c.id].s==='skipped').length} 項${CHAINS.some(c=>c.q&&state.q[c.id].s==='skipped'&&!state.q[c.id].reason)?'（<b>有略過未註記原因</b>）':''}</li>
+      <li>說話者更正 ${fixed.length} 處（已套用）</li>
+      <li>員警修改案情句 ${edited.length} 處</li></ul></div>
+    <div class="box"><h4>格式說明</h4><p style="margin:0;color:var(--ink2)">依逐字稿說話者切分：「員警」句為問、其後連續「被害人」句合併為答。問答以原話為準，不改寫語意。</p></div>
+    <div class="box"><h4>隨附</h4><p style="margin:0;color:var(--ink2)">應優先調閱清單（4 項）、檢核表結果</p></div>`;
+  $('#modal').classList.add('show');
+}
+
+/* ================= render all ================= */
+function render(){
+  document.body.classList.toggle('check',state.mode==='check');
+  $('#m-live').classList.toggle('on',state.mode==='live');
+  $('#m-check').classList.toggle('on',state.mode==='check');
+  renderChips(); renderBoard(); renderSide();
+}
+function setMode(m){ state.mode=m; state.filter=null; history.replaceState(null,'',m==='check'?'#check':'#'); hideBlame(); render(); $('#board').scrollTop=0; }
+function gotoChain(id){
+  state.filter=null; state.expanded.add(id); render();
+  const el=$('#row-'+id)||document.querySelector(`[data-exp="${id}"]`);
+  if(el){ const row=el.classList.contains('chain')?el:el.querySelector('.chain')||el; row.scrollIntoView({block:'center',behavior:'smooth'}); row.classList.add('flash'); setTimeout(()=>row.classList.remove('flash'),1300); }
+}
+
+/* ================= events ================= */
+$('#m-live').onclick=()=>setMode('live');
+$('#m-check').onclick=()=>setMode('check');
+$('#hdrExport').onclick=buildDraft;
+$('#closeModal').onclick=()=>$('#modal').classList.remove('show');
+$('#modal').onclick=e=>{ if(e.target.id==='modal') $('#modal').classList.remove('show'); };
+$('#fakeDl').onclick=()=>toast('原型示意：此處將產生 .docx 檔');
+$('#copyDraft').onclick=()=>{ const t=$('#paper').innerText; (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已複製草稿文字'),()=>toast('瀏覽器不允許複製（離線檔案限制）')); };
+$('#openDrawer').onclick=()=>openDrawer();
+$('#closeDrawer').onclick=()=>$('#drawer').classList.remove('open');
+$('#contraBtn').onclick=()=>gotoChain('c5');
+$('#pauseBtn').onclick=()=>{ state.paused=!state.paused; $('#live').classList.toggle('paused',state.paused); $('#recLbl').textContent=state.paused?'已暫停':'錄音中'; $('#pauseBtn').innerHTML=state.paused?`${ico('i-play')}繼續`:`${ico('i-pause')}暫停`; renderTranscript(); };
+
+$('#chips').addEventListener('click',e=>{ const c=e.target.closest('.chip'); if(!c) return; state.filter=state.filter===c.dataset.b?null:c.dataset.b; render(); $('#board').scrollTop=0; });
+
+document.addEventListener('click',e=>{
+  const t=e.target;
+  const src=t.closest('.src'); if(src){ e.stopPropagation(); if(src.classList.contains('on')) hideBlame(); else showBlame(src); return; }
+  const ot=t.closest('[data-opentr]'); if(ot){ openDrawer(ot.dataset.opentr.split(',')); hideBlame(); return; }
+  const rv=t.closest('[data-revert]'); if(rv){ const f=CHAINS.flatMap(c=>c.facts).find(x=>x.id===rv.dataset.revert); f.edited=false; f.html=null; hideBlame(); renderBoard(); toast('已還原原句'); return; }
+  if(!t.closest('.pop')) hideBlame();
+  const qa=t.closest('[data-act]');
+  if(qa){ const q=state.q[qa.dataset.c]; const a=qa.dataset.act;
+    if(a==='ask'){ q.s='asked'; q.at=nowStamp().slice(0,5); toast('已標記「已問」；相關偵查行動改為待核對'); }
+    if(a==='skip'){ q.s='skipped'; toast('已略過；簽名前檢查會要求註記原因'); }
+    if(a==='undo'){ q.s='todo'; q.reason=''; }
+    render(); return; }
+  const cl=t.closest('[data-clear]'); if(cl){ state.filter=null; render(); return; }
+  const ex=t.closest('[data-exp]'); if(ex){ state.expanded.add(ex.dataset.exp); renderBoard(); return; }
+  const co=t.closest('[data-col]'); if(co){ state.expanded.delete(co.dataset.col); renderBoard(); return; }
+  const g=t.closest('[data-g]'); if(g){ state.gridSel=state.gridSel===g.dataset.g?null:g.dataset.g; renderSide(); return; }
+  const go=t.closest('[data-goto]'); if(go){ e.preventDefault(); gotoChain(go.dataset.goto); return; }
+  const exb=t.closest('[data-export]'); if(exb){ buildDraft(); return; }
+  const sp=t.closest('[data-spk]'); if(sp){ const l=TM[sp.dataset.spk]; l.spk=l.spk==='officer'?'victim':'officer'; l.fixed=!l.fixed; l.low=false; renderTranscript([l.id]); toast(`已將 ${l.time} 更正為「${l.spk==='officer'?'員警':'被害人'}」`); return; }
+});
+document.addEventListener('change',e=>{ if(e.target.matches('.reason')){ state.q[e.target.dataset.c].reason=e.target.value; renderBoard(); } });
+document.addEventListener('input',e=>{
+  const el=e.target.closest('.txt'); if(!el) return;
+  const f=CHAINS.flatMap(c=>c.facts).find(x=>x.id===el.dataset.s);
+  f.html=el.innerHTML; f.edited=true; el.closest('.sent').classList.add('edited');
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ hideBlame(); $('#modal').classList.remove('show'); $('#drawer').classList.remove('open'); }
+  if(e.key==='Enter' && e.target.closest('.txt')){ e.preventDefault(); e.target.blur(); }
+});
+$('#board').addEventListener('scroll',hideBlame);
+
+/* timer */
+let tick=0; const base=11*60+23;
+setInterval(()=>{ if(state.paused) return; tick++; const s=base+tick; $('#timer').textContent=[Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(n=>String(n).padStart(2,'0')).join(':'); },1000);
+
+render(); renderTranscript();
+if(location.hash==='#transcript') openDrawer(['t13']);
+if(location.hash==='#draft'){ state.mode='check'; render(); buildDraft(); }
+</script>
+</body>
+</html>

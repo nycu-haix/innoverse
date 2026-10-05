@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>筆錄輔助 Prototypes</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2430;--muted:#5b6675;--card:#fff;--line:#dfe3e8;--accent:#1f4fd1}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+main{max-width:1200px;margin:0 auto;padding:32px 16px}
+h1{font-size:22px;margin:0 0 4px}p.sub{color:var(--muted);margin:0 0 24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px}
+a.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;color:inherit;text-decoration:none}
+a.card:hover{border-color:var(--accent)}
+a.card img{width:100%;display:block;border-bottom:1px solid var(--line)}
+.body{padding:12px 14px}.body b{font-size:16px}.body span{display:block;color:var(--muted);font-size:13px;margin-top:4px}
+.links{font-size:13px;margin-top:8px}.links a{color:var(--accent);margin-right:12px}
+</style></head><body><main>
+<h1>筆錄輔助系統 Prototypes</h1><p class="sub">五種排版方向・同一份虛構案例（mock-case.md）・無 AI、無後端</p>
+<div class="grid">
+<a class="card" href="A-流程圖畫布.html"><img src="screenshots/A.png" alt=""><div class="body"><b>A 流程圖畫布</b><span>白板式流程圖＋右側區塊詳情</span></div></a>
+<a class="card" href="B-三欄工作台.html"><img src="screenshots/B.png" alt=""><div class="body"><b>B 三欄工作台</b><span>逐字稿｜案情區塊｜追問建議，雙向原話對照</span></div></a>
+<a class="card" href="C-專注模式.html"><img src="screenshots/C.png" alt=""><div class="body"><b>C 專注模式</b><span>一題大卡片，低認知負荷，可暫停安撫</span></div></a>
+<a class="card" href="D-區塊編輯器.html"><img src="screenshots/D.png" alt=""><div class="body"><b>D 區塊編輯器</b><span>Notion 式區塊＋git blame 來源欄</span></div></a>
+<a class="card" href="E-偵查線索儀表板.html"><img src="screenshots/E.png" alt=""><div class="body"><b>E 偵查線索儀表板</b><span>事實 → 追問 → 偵查行動，調閱清單與檢核表</span></div></a>
+</div>
+<p class="sub" style="margin-top:20px">每個檔案網址加上 <code>#check</code> 可直接進入「簽名前檢查」模式。</p>
+</main></body></html>

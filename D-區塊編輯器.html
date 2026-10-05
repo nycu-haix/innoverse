@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>筆錄區塊編輯器</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --ink:#1b2130; --ink2:#3a4254; --muted:#6b7280; --faint:#9aa1ad;
+  --line:#e2e5ea; --line2:#eef0f3; --hover:#f7f8fa;
+  --ok:#0b6fb0; --ok-bg:#e6f1fa;
+  --pend:#b85400; --pend-bg:#fdf0e3;
+  --none:#5f6673; --none-bg:#eff0f2;
+  --lv-must:#a8321f; --lv-lead:#6a3d9a; --lv-add:#4b5563;
+  --kw-t:#0b6fb0; --kw-t-bg:#e3effa;
+  --kw-a:#a86400; --kw-a-bg:#fff0d4;
+  --kw-i:#6a3d9a; --kw-i-bg:#f0e8f8;
+  --kw-p:#007a5a; --kw-p-bg:#dcf2ea;
+  --rec:#d1361f;
+  --sans:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+svg{flex:none}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:0 16px;background:#1b2130;color:#e8ebf0;border-bottom:1px solid #000}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.brand small{font-weight:400;color:#9aa3b5;font-size:12px}
+.case-meta{font-size:12px;color:#aab2c2;white-space:nowrap;border-left:1px solid #384055;padding-left:14px}
+.case-meta b{color:#e8ebf0;font-weight:500}
+.spacer{flex:1}
+.rec{display:flex;align-items:center;gap:10px;background:#262d3d;border:1px solid #3a4256;border-radius:8px;padding:5px 10px;font-size:12px;white-space:nowrap}
+.rec .dot{width:9px;height:9px;border-radius:50%;background:var(--rec);box-shadow:0 0 0 0 rgba(209,54,31,.6);animation:pulse 1.6s infinite}
+.rec.paused .dot{animation:none;background:#8a92a3}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(209,54,31,.55)}70%{box-shadow:0 0 0 7px rgba(209,54,31,0)}100%{box-shadow:0 0 0 0 rgba(209,54,31,0)}}
+.rec .time{font-family:var(--mono);color:#fff}
+.meter{display:flex;gap:2px;align-items:flex-end;height:14px}
+.meter i{width:3px;background:#7fb6e0;border-radius:1px;height:4px;transition:height .12s}
+.rec.paused .meter i{height:2px!important;background:#5b6377}
+.rec button{background:none;border:1px solid #4a536a;border-radius:5px;padding:1px 7px;font-size:12px;color:#dfe3ea}
+.seg{display:flex;background:#262d3d;border:1px solid #3a4256;border-radius:8px;padding:3px}
+.seg button{border:0;background:none;color:#b8c0cf;padding:4px 12px;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.seg button.on{background:#fff;color:#1b2130;font-weight:600}
+.seg .n{font-family:var(--mono);font-size:11px;background:#a8321f;color:#fff;border-radius:9px;padding:0 6px}
+.fict{font-size:11px;color:#ffd9a8;border:1px dashed #a37a45;border-radius:5px;padding:2px 7px;white-space:nowrap}
+
+/* ---------- body grid ---------- */
+.main{display:grid;grid-template-columns:184px minmax(0,1fr) 340px;min-height:0}
+.rail{border-right:1px solid var(--line);background:#fbfbfc;padding:16px 10px 16px 14px;overflow:auto}
+.rail h4{margin:0 0 10px;font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.flow{position:relative;margin:0;padding:0;list-style:none}
+.flow:before{content:"";position:absolute;left:9px;top:10px;bottom:10px;width:2px;background:var(--line)}
+.flow li{position:relative;display:flex;align-items:flex-start;gap:9px;padding:6px 6px 6px 0;border-radius:6px;cursor:pointer}
+.flow li:hover .lbl{color:var(--ink)}
+.flow li.active .lbl{color:var(--ink);font-weight:600}
+.flow li.active:after{content:"";position:absolute;left:-14px;top:6px;bottom:6px;width:3px;background:var(--ink);border-radius:0 2px 2px 0}
+.node{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid;z-index:1;margin-top:1px}
+.node.ok{border-color:var(--ok);background:var(--ok);color:#fff}
+.node.pend{border-color:var(--pend);color:var(--pend);background:#fff}
+.node.none{border-color:var(--none);border-style:dashed;color:var(--none)}
+.flow .lbl{font-size:13px;color:var(--ink2);line-height:1.35}
+.flow .lbl small{display:block;font-size:11px;color:var(--muted)}
+.flow .miss{display:block;font-family:var(--mono);font-size:10.5px;color:var(--pend)}
+.rail .sep{margin:14px 0 8px;border-top:1px dashed var(--line);padding-top:10px}
+.legend{margin-top:18px;font-size:11.5px;color:var(--muted)}
+.legend div{display:flex;align-items:center;gap:6px;margin:5px 0}
+.legend .sw{display:inline-block}
+
+/* ---------- editor ---------- */
+.editor{overflow:auto;min-height:0;scroll-behavior:smooth}
+.ed-inner{max-width:880px;margin:0 auto;padding:18px 28px 80px}
+.strip{position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg) 82%,rgba(244,245,247,0));padding:2px 0 12px;margin-bottom:4px}
+.strip-box{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:7px 10px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.strip-box .t{font-size:12px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:5px}
+.chips{display:flex;gap:6px;min-width:0;flex:1}
+.chip{display:flex;align-items:center;gap:6px;min-width:0;flex:1;border:1px solid var(--line);background:var(--hover);border-radius:7px;padding:4px 8px;font-size:12.5px;cursor:pointer;text-align:left}
+.chip:hover{border-color:#c5cad3;background:#fff}
+.chip .rk{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;background:var(--ink);border-radius:4px;padding:0 5px}
+.chip span.q{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kwlegend{display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin:2px 2px 12px;flex-wrap:wrap;align-items:center}
+
+.block{scroll-margin-top:64px;background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:visible}
+.bh{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 10px;border-bottom:1px solid var(--line2)}
+.bh .caret{border:0;background:none;padding:2px;border-radius:4px;color:var(--muted);display:grid;place-items:center}
+.bh .caret:hover{background:var(--hover)}
+.block.collapsed .caret svg{transform:rotate(-90deg)}
+.block.collapsed .rows{display:none}
+.block.collapsed .bh{border-bottom:0}
+.bh .idx{font-family:var(--mono);font-size:11px;color:var(--faint);width:18px}
+.bh h3{margin:0;font-size:15px;font-weight:650;letter-spacing:.01em}
+.bh h3 small{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+.bh .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.cnt{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px 2px 7px;white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.pend{background:var(--pend-bg);color:var(--pend)}
+.pill.none{background:var(--none-bg);color:var(--none);outline:1px dashed #b9bec7;outline-offset:-1px}
+.pill.conf{background:#fbe9e6;color:var(--lv-must)}
+
+.rows{padding:4px 0 6px}
+.row{display:grid;grid-template-columns:116px minmax(0,1fr) auto;align-items:stretch;min-height:34px;position:relative}
+.row:hover{background:var(--hover)}
+.gut{font-family:var(--mono);font-size:11.5px;display:flex;align-items:center;gap:6px;padding:0 8px 0 10px;border-right:1px solid var(--line2);cursor:pointer;color:#5a4120;user-select:none;position:relative}
+.gut:before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:3px;border-radius:0 2px 2px 0;background:var(--heat-bar)}
+.gut{background:var(--heat-bg)}
+.gut:hover{filter:brightness(.96)}
+.gut.pinned{outline:2px solid var(--ink);outline-offset:-2px}
+.gut .sp{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:4px;font-family:var(--sans);font-size:11px;font-weight:600;background:#fff;border:1px solid rgba(0,0,0,.12);color:var(--ink2)}
+.gut .sp.v{background:#3a4254;color:#fff;border-color:#3a4254}
+.gut .more{font-size:10.5px;color:#8a6a3c}
+.gut.sys{background:repeating-linear-gradient(135deg,#f3f4f6 0 5px,#eceef1 5px 10px);color:var(--muted);font-family:var(--sans);font-size:11.5px}
+.gut.sys:before{display:none}
+.gut.empty{background:none;color:var(--faint);cursor:default}
+.gut.empty:before{display:none}
+.txt{padding:6px 12px;outline:none;border-radius:4px;line-height:1.75;font-size:14.5px;min-width:0;word-break:break-word}
+.txt[contenteditable]:hover{box-shadow:inset 0 0 0 1px #dfe2e7}
+.txt[contenteditable]:focus{box-shadow:inset 0 0 0 2px #7aa7cf;background:#fff}
+.row.linked{background:#fffbea}
+.meta{display:flex;align-items:center;gap:6px;padding:0 10px 0 4px}
+.edited{font-size:11px;color:#6a3d9a;border:1px solid #d9c9ea;background:#f7f2fc;border-radius:4px;padding:0 6px;cursor:help;white-space:nowrap;display:none;align-items:center;gap:4px}
+.row.is-edited .edited{display:inline-flex}
+.tag{font-size:11.5px;font-weight:600;border-radius:4px;padding:0 6px;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.tag.pend{color:var(--pend);background:var(--pend-bg)}
+.tag.conf{color:var(--lv-must);background:#fbe9e6}
+
+.kw{border-radius:3px;padding:0 3px;margin:0 1px;border-bottom:2px solid}
+.kw-t{background:var(--kw-t-bg);border-color:var(--kw-t)}
+.kw-a{background:var(--kw-a-bg);border-color:var(--kw-a);font-weight:600}
+.kw-i{background:var(--kw-i-bg);border-color:var(--kw-i);font-family:var(--mono);font-size:.92em;border-bottom-style:dotted}
+.kw-p{background:var(--kw-p-bg);border-color:var(--kw-p);border-bottom-style:double;border-bottom-width:3px}
+
+/* ghost rows */
+.ghost{margin:6px 10px 6px 126px;border:1.5px dashed #c9a27a;border-radius:8px;background:#fffaf4;padding:8px 10px 8px 12px;position:relative}
+.ghost:before{content:"";position:absolute;left:-116px;top:15px;width:104px;border-top:1px dashed #d9c3a9}
+.ghost .g1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ghost .field{font-weight:600;color:#6b3a07}
+.ghost .st{font-size:12px;color:var(--pend);display:inline-flex;align-items:center;gap:4px}
+.ghost .rank{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;background:var(--ink);border-radius:4px;padding:0 5px}
+.lv{font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;letter-spacing:.03em}
+.lv.must{background:var(--lv-must);color:#fff}
+.lv.lead{background:#efe6f8;color:var(--lv-lead);border:1px solid #cdb6e6}
+.lv.add{background:#fff;color:var(--lv-add);border:1px solid #c7ccd4}
+.ghost .acts{margin-left:auto;display:flex;gap:6px}
+.btn{border:1px solid #cfd4db;background:#fff;border-radius:6px;padding:2px 10px;font-size:12.5px;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{border-color:#9aa1ad}
+.btn.pri{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.pri:hover{background:#000}
+.btn.ghostb{border-color:transparent;background:none;color:var(--muted)}
+.btn.ghostb:hover{color:var(--ink);border-color:#cfd4db}
+.ghost .detail{margin-top:7px;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13.5px}
+.ghost .detail dt{color:var(--muted);font-size:12px;padding-top:1px;white-space:nowrap}
+.ghost .detail dd{margin:0}
+.ghost .detail dd.q{font-weight:600;color:var(--ink)}
+.ghost .detail dd.why{color:var(--ink2)}
+.ghost.compact{background:#fffdf9;padding:5px 10px 5px 12px;border-color:#dcc3a6}
+.ghost.compact .detail{display:none}
+.ghost.compact.open .detail{display:grid}
+.ghost .expand{display:none;font-size:12px;color:var(--muted);background:none;border:0;padding:0 4px;text-decoration:underline;text-underline-offset:2px}
+.ghost.compact .expand{display:inline}
+.ghost.asked{border-style:solid;border-color:#b9cfe2;background:#f4f8fc}
+.ghost.asked .field{color:var(--ok)}
+.ghost.asked .detail{display:none}
+.ghost.skipped{border-color:#d5d8de;background:#f7f7f8;opacity:.75}
+.ghost.skipped .field{text-decoration:line-through;color:var(--muted)}
+.ghost.skipped .detail{display:none}
+.ghost .stmsg{font-size:12px;color:var(--muted)}
+
+/* ---------- transcript panel ---------- */
+.side{border-left:1px solid var(--line);background:#fff;display:flex;flex-direction:column;min-height:0}
+.side-h{padding:12px 14px 10px;border-bottom:1px solid var(--line)}
+.side-h h4{margin:0;font-size:13px;display:flex;align-items:center;gap:8px}
+.side-h p{margin:4px 0 0;font-size:11.5px;color:var(--muted)}
+.mic{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);margin-top:6px}
+.tx{overflow:auto;flex:1;padding:6px 0 20px;scroll-behavior:smooth}
+.ln{display:grid;grid-template-columns:62px 1fr;gap:2px 8px;padding:6px 14px 6px 12px;border-left:3px solid transparent;font-size:13px}
+.ln .ts{font-family:var(--mono);font-size:11px;color:var(--faint);padding-top:2px}
+.ln .who{display:flex;align-items:center;gap:6px;margin-bottom:1px}
+.spk{border:1px solid #cfd4db;background:#fff;border-radius:4px;padding:0 6px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.spk.v{background:#3a4254;color:#fff;border-color:#3a4254}
+.spk:hover{box-shadow:0 0 0 2px #c9d6e4}
+.lowc{font-size:11px;color:var(--pend);display:inline-flex;align-items:center;gap:3px}
+.fixed{font-size:11px;color:var(--ok)}
+.ln .say{grid-column:2;color:var(--ink2)}
+.ln.hl{background:#fffbea;border-left-color:#e0a400}
+.ln.live .say{color:var(--muted)}
+.typing i{display:inline-block;width:5px;height:5px;margin:0 1.5px;border-radius:50%;background:#9aa1ad;animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.side-f{border-top:1px solid var(--line);padding:8px 14px;font-size:11px;color:var(--muted);background:#fbfbfc}
+
+/* ---------- popover ---------- */
+.pop{position:fixed;z-index:50;width:400px;background:#fff;border:1px solid #cdd2da;border-radius:9px;box-shadow:0 10px 30px rgba(20,25,40,.18);font-size:13px;display:none}
+.pop.show{display:block}
+.pop-h{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line2);font-size:11.5px;color:var(--muted)}
+.pop-h b{color:var(--ink);font-weight:600}
+.pop-h .x{margin-left:auto;border:0;background:none;color:var(--muted);padding:0 4px;display:none}
+.pop.pinned .pop-h .x{display:block}
+.pop-b{padding:4px 0}
+.pop .ln{grid-template-columns:62px 1fr;padding:5px 12px}
+.pop-f{border-top:1px solid var(--line2);padding:6px 10px;font-size:11px;color:var(--faint)}
+.diff del{background:#fde4e1;color:#9b2c1c;text-decoration:line-through}
+.diff ins{background:#e3efe0;color:#245c1a;text-decoration:none;border-bottom:1px solid #6a9b5d}
+.diff .lbl{font-size:11px;color:var(--muted);width:58px;display:inline-block;white-space:nowrap}
+.diff div{padding:3px 0}
+
+/* ---------- check mode ---------- */
+.check{display:none}
+body.mode-check .check{display:block}
+body.mode-check .editview{display:none}
+.ck-head{display:flex;align-items:flex-end;gap:16px;margin:4px 0 14px}
+.ck-head h2{margin:0;font-size:19px}
+.ck-head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.ck-head .sign{margin-left:auto;text-align:right}
+.ck-head .sign .btn{padding:6px 14px;font-size:13.5px}
+.ck-head .sign .btn[disabled]{opacity:.45;cursor:not-allowed}
+.ck-head .sign small{display:block;font-size:11.5px;color:var(--muted);margin-top:4px}
+.sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.sum div{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 12px}
+.sum b{font-family:var(--mono);font-size:22px;display:block;line-height:1.2}
+.sum span{font-size:12px;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:14px}
+.card-h{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line2);font-weight:650}
+.card-h small{font-weight:400;color:var(--muted);font-size:12px}
+.card-b{padding:10px 14px}
+.conflict{border-color:#e8b4aa}
+.conflict .card-h{background:#fdf3f1;border-radius:10px 10px 0 0;color:var(--lv-must)}
+.eq{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:14px;margin:4px 0 8px}
+.eq .box{border:1px solid var(--line);border-radius:7px;padding:3px 8px;font-size:13px;background:#fafbfc}
+.eq .box small{display:block;font-size:11px;color:var(--muted)}
+.eq .op{color:var(--muted);font-family:var(--mono)}
+.srcs{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.srcbtn{font-family:var(--mono);font-size:11.5px;border:1px solid #e3cfa9;background:#fff6e6;border-radius:4px;padding:1px 7px}
+.lvgroup .ghost{margin:8px 0}
+.lvgroup .ghost:before{display:none}
+.lvgroup .ghost .from{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 6px;background:#fff}
+.lvgroup .emptymsg{color:var(--muted);font-size:13px;padding:4px 0}
+.pending-rows .pr{display:grid;grid-template-columns:116px 1fr auto;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line2)}
+.pending-rows .pr:last-child{border-bottom:0}
+.pending-rows .gut{height:28px;border-radius:5px;border-right:0}
+ol.pull{margin:0;padding:0;list-style:none;counter-reset:p}
+ol.pull li{counter-increment:p;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:start;padding:7px 0;border-bottom:1px solid var(--line2)}
+ol.pull li:last-child{border-bottom:0}
+ol.pull li:before{content:counter(p);font-family:var(--mono);font-weight:700;font-size:12px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#eef0f3;color:var(--ink2)}
+ol.pull li.urgent:before{background:var(--lv-must);color:#fff}
+ol.pull .due{font-size:11.5px;font-weight:600;white-space:nowrap}
+ol.pull li.urgent .due{color:var(--lv-must)}
+.cols{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;align-items:start}
+.cols>.card{margin-bottom:14px}
+.foot-note{font-size:11.5px;color:var(--muted);text-align:center;margin-top:24px}
+
+@media (max-width:1340px){
+  .main{grid-template-columns:168px minmax(0,1fr) 312px}
+  .ed-inner{padding:16px 18px 80px}
+  .case-meta{display:none}
+  .chip span.q{max-width:150px}
+  .cols{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9fc4e6" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg>
+      筆錄輔助 <small>區塊編輯器</small>
+    </div>
+    <div class="case-meta">假投資詐欺 ・ 被害人 <b>林○○</b>（52）・ 詢問開始 <b>2026-10-05 14:02</b></div>
+    <span class="fict" title="本畫面所有姓名、帳號、ID、APP 名稱皆為虛構">虛構資料・僅供介面展示</span>
+    <div class="spacer"></div>
+    <div class="rec" id="rec">
+      <span class="dot"></span>
+      <span id="recLabel">錄音中</span>
+      <span class="time" id="recTime">00:12:04</span>
+      <span class="meter" id="meter"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <button id="recBtn" title="暫停／繼續收音">暫停</button>
+    </div>
+    <div class="seg" role="tablist">
+      <button id="mAsk" class="on">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/></svg>詢問中</button>
+      <button id="mCheck">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>簽名前檢查 <span class="n" id="mustN">2</span></button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- outline rail -->
+    <nav class="rail">
+      <h4>案情流程</h4>
+      <div id="flow"></div>
+      <div class="legend">
+        <div><span class="node ok sw" style="width:14px;height:14px"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4"><path d="M5 12l5 5 9-10"/></svg></span>已取得</div>
+        <div><span class="node pend sw" style="width:14px;height:14px;font-size:9px;font-weight:700">!</span>待確認</div>
+        <div><span class="node none sw" style="width:14px;height:14px"></span>尚未提及</div>
+      </div>
+    </nav>
+
+    <!-- editor -->
+    <section class="editor" id="editor">
+      <div class="ed-inner">
+        <div class="editview">
+          <div class="strip">
+            <div class="strip-box">
+              <span class="t"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>接下來可以問</span>
+              <div class="chips" id="chips"></div>
+            </div>
+          </div>
+          <div class="kwlegend">
+            <span>關鍵字：</span>
+            <span><span class="kw kw-t">時間</span></span>
+            <span><span class="kw kw-a">金額</span></span>
+            <span><span class="kw kw-i">帳號／ID</span></span>
+            <span><span class="kw kw-p">地點</span></span>
+            <span style="margin-left:auto">左側欄＝原話來源（滑過預覽、點擊釘選）・句子可直接點擊編輯</span>
+          </div>
+          <div id="blocks"></div>
+        </div>
+
+        <div class="check" id="check"></div>
+        <div class="foot-note">本原型所有案情、姓名（以○遮蔽）、帳號、LINE ID、APP 名稱均為虛構，無 AI、無後端，資料為寫死示意。</div>
+      </div>
+    </section>
+
+    <!-- transcript -->
+    <aside class="side">
+      <div class="side-h">
+        <h4>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4"/></svg>
+          即時逐字稿 <span style="font-weight:400;color:var(--muted);font-size:11.5px">（節錄）</span>
+        </h4>
+        <div class="mic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M12 14V6"/><circle cx="12" cy="5" r="2"/></svg>單一桌面麥克風 ・ 自動區分說話者</div>
+        <p>說話者標錯時，點標籤即可切換 員警 ⇄ 被害人。</p>
+      </div>
+      <div class="tx" id="tx"></div>
+      <div class="side-f">黃底＝目前釘選／編輯中句子的來源原話</div>
+    </aside>
+  </div>
+</div>
+
+<div class="pop" id="pop">
+  <div class="pop-h"><span id="popTitle"></span><button class="x" id="popX" title="取消釘選">✕</button></div>
+  <div class="pop-b" id="popBody"></div>
+  <div class="pop-f" id="popFoot"></div>
+</div>
+
+<script>
+/* ===================== DATA（全部虛構） ===================== */
+const TX = [
+  {id:'L1', t:'14:02:10', sp:'員警', s:'林小姐，請您從頭說，一開始是怎麼接觸到對方的？'},
+  {id:'L2', t:'14:02:25', sp:'被害人', s:'九月三號晚上吧，我在臉書看到一個投資的廣告，點進去就加了一個 LINE，叫陳老師。'},
+  {id:'L3', t:'14:03:05', sp:'員警', s:'那個 LINE 的 ID 您還記得嗎？'},
+  {id:'L4', t:'14:03:12', sp:'被害人', s:'有，我手機裡還有，是 invest_chen888。'},
+  {id:'L5', t:'14:03:40', sp:'被害人', s:'他把我拉進一個群組叫財富自由學院，裡面兩百多個人，每天都有人貼賺錢的截圖。'},
+  {id:'L6', t:'14:04:30', sp:'被害人', s:'陳老師說跟著他做，每個月保證賺兩成，叫我下載一個 APP 叫鼎盛國際。'},
+  {id:'L7', t:'14:06:02', sp:'員警', s:'第一次匯錢是什麼時候？'},
+  {id:'L8', t:'14:06:15', sp:'被害人', s:'九月十號下午兩點多，我用網銀轉了五萬，轉到一個王什麼的帳戶。'},
+  {id:'L9', t:'14:08:40', sp:'員警', s:'後來還有再給錢嗎？'},
+  {id:'L10', t:'14:08:52', sp:'被害人', s:'有，十八號晚上七點半左右，他說要面交，叫我拿三十萬到竹北一間便利商店前面。'},
+  {id:'L11', t:'14:09:30', sp:'員警', s:'來拿錢的人長什麼樣子？'},
+  {id:'L12', t:'14:09:41', sp:'被害人', s:'一個年輕男生，二十幾歲吧，戴黑色口罩、穿灰色帽 T，騎機車來的，車牌我沒注意。'},
+  {id:'L13', t:'14:10:20', sp:'被害人', s:'他有拿一個工作證給我看，寫鼎盛國際外派專員，還開了一張收據給我。'},
+  {id:'L14', t:'14:11:05', sp:'被害人', s:'後來又買了一次 USDT 轉過去。'},
+  /* 示範：辨識把員警的問句誤標為被害人（低信心） */
+  {id:'L15', t:'14:12:30', sp:'被害人', s:'什麼時候發現被騙的？', low:true},
+  {id:'L16', t:'14:12:41', sp:'被害人', s:'二十八號我想把錢領出來，APP 說要先繳十五萬保證金，我才覺得不對。'},
+  {id:'L17', t:'14:13:10', sp:'被害人', s:'總共大概被騙了四十萬吧。'},
+];
+const TXM = Object.fromEntries(TX.map(l=>[l.id,l]));
+
+const PROMPTS = [
+  {id:1, q:'面交時拿到的收據現在在哪裡？交付時您有沒有摸過？', why:'收據可能留有車手姓名或指紋，可採證比對', lv:'lead', block:'b4'},
+  {id:2, q:'第三次買 USDT 是哪一天、多少錢？向誰買、轉到哪個錢包地址？', why:'「交付財物」為構成要件；錢包地址可追查鏈上金流至交易所', lv:'must', block:'b5'},
+  {id:3, q:'9/10 那筆轉帳的交易序號或轉帳截圖還在嗎？', why:'據以函調帳戶交易明細、通報警示帳戶', lv:'lead', block:'b3'},
+  {id:4, q:'面交時車手有沒有一邊講電話？', why:'調閱通聯，連結車手與機房', lv:'lead', block:'b4'},
+  {id:5, q:'總共被騙的金額是多少？跟每一筆對得起來嗎？', why:'確認損害金額一致，避免筆錄矛盾', lv:'must', block:'b8'},
+  {id:6, q:'報案前後，有沒有人說可以幫您追回款項？', why:'防範二次詐騙，可能涉及另案', lv:'add', block:'b7'},
+];
+const PM = Object.fromEntries(PROMPTS.map(p=>[p.id,p]));
+const LV = {must:'必要', lead:'偵查線索', add:'補充'};
+const state = {1:'open',2:'open',3:'open',4:'open',5:'open',6:'open'};
+
+/* {t|時間} {a|金額} {i|帳號/ID} {p|地點} */
+const BLOCKS = [
+  {id:'b1', name:'接觸', st:'ok', rows:[
+    {k:'s', h:'{t|2026-09-03 晚上}，在 Facebook 看到投資廣告', src:['L2']},
+    {k:'s', h:'點廣告後加入 LINE 好友「陳老師」，LINE ID：{i|invest_chen888}', src:['L2','L3','L4']},
+    {k:'s', h:'被拉進 LINE 群組「財富自由學院」（約 200 人）', src:['L5']},
+  ]},
+  {id:'b2', name:'取得信任', st:'ok', rows:[
+    {k:'s', h:'「陳老師」每天在群組報明牌，群組內其他人一直貼獲利截圖', src:['L5']},
+    {k:'s', h:'對方保證每月獲利 20%', src:['L6']},
+    {k:'s', h:'要求下載投資 APP「鼎盛國際」並註冊帳號', src:['L6']},
+  ]},
+  {id:'b3', name:'交付 #1', sub:'網路銀行轉帳', st:'pend', rows:[
+    {k:'s', h:'{t|2026-09-10 14:20}，網路銀行轉帳 {a|NT$50,000}', src:['L7','L8']},
+    {k:'s', h:'轉入帳號：{i|822-0000-1234-5678}（虛構），戶名：王○○', src:['L8']},
+    {k:'g', field:'交易序號', pid:3},
+  ]},
+  {id:'b4', name:'交付 #2', sub:'面交', st:'pend', rows:[
+    {k:'s', h:'{t|2026-09-18 約 19:30}，{p|竹北市○○路便利商店前}', src:['L9','L10']},
+    {k:'s', h:'交付現金 {a|NT$300,000}', src:['L10']},
+    {k:'s', h:'車手：男性、約 20 多歲、黑色口罩、灰色連帽外套、騎機車', src:['L11','L12'],
+       asr:'車手：男性、約 20 多歲、黑色口罩、灰色帽踢、騎機車'},
+    {k:'s', h:'車手出示「鼎盛國際外派專員」工作證，並開立收據', src:['L13']},
+    {k:'s', h:'機車車牌：被害人表示「沒注意」', src:['L12'], pend:true},
+    {k:'g', field:'收據目前在哪裡、是否碰觸過', pid:1},
+    {k:'g', field:'交付時是否與他人通話', pid:4},
+  ]},
+  {id:'b5', name:'交付 #3', sub:'虛擬貨幣（USDT）', st:'none', stLabel:'尚未提及細節', rows:[
+    {k:'s', h:'被害人只說「後來又買了一次 USDT 轉過去」', src:['L14']},
+    {k:'g', field:'日期、金額、購幣方式、錢包地址、TxID', pid:2},
+  ]},
+  {id:'b6', name:'發現受騙', st:'ok', rows:[
+    {k:'s', h:'{t|2026-09-28} 想出金，APP 顯示需先繳「保證金」{a|15 萬}，才發現被騙', src:['L15','L16']},
+  ]},
+  {id:'b7', name:'二次詐騙', st:'none', rows:[
+    {k:'g', field:'是否有人聲稱可協助追回款項', pid:6},
+  ]},
+  {id:'b8', name:'損害合計', sub:'跨區塊彙整', st:'pend', conflict:true, summary:true, rows:[
+    {k:'s', h:'被害人稱「總共大概被騙 {a|40 萬}」', src:['L17'], conf:true},
+    {k:'c', h:'交付 #1 {a|NT$50,000} ＋ 交付 #2 {a|NT$300,000} ＝ {a|NT$350,000}；交付 #3 金額未知'},
+    {k:'g', field:'總損害金額與各筆是否一致', pid:5},
+  ]},
+];
+const STL = {ok:'已取得', pend:'待確認', none:'尚未提及'};
+
+/* ===================== helpers ===================== */
+const $ = s=>document.querySelector(s);
+const esc = s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kw = h=>esc(h).replace(/\{([taip])\|([^}]+)\}/g,(m,k,v)=>`<span class="kw kw-${k}">${v}</span>`);
+const plain = h=>h.replace(/\{[taip]\|([^}]+)\}/g,'$1');
+const ICON = {
+  ok:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>',
+  pend:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>',
+  none:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="3 3"><circle cx="12" cy="12" r="9"/></svg>',
+  warn:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>',
+  caret:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="transition:transform .15s"><path d="M6 9l6 6 6-6"/></svg>',
+  pen:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  conf:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 4L3 8l4 4M3 8h12M17 20l4-4-4-4M21 16H9"/></svg>',
+  calc:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2"/></svg>',
+};
+const pill = (st,label)=>`<span class="pill ${st}">${ICON[st]}${label||STL[st]}</span>`;
+const lvTag = lv=>`<span class="lv ${lv}">${LV[lv]}</span>`;
+const sec = t=>{const [h,m,s]=t.split(':').map(Number);return h*3600+m*60+s};
+const T0 = sec('14:02:00'), T1 = sec('14:13:30');
+function heat(t){ // 越新越深（類似 git blame 熱度）
+  const r = Math.max(0,Math.min(1,(sec(t)-T0)/(T1-T0)));
+  return {bg:`hsl(36, ${55+30*r}%, ${97-14*r}%)`, bar:`hsl(30, ${60+30*r}%, ${78-30*r}%)`};
+}
+function mainSrc(src){ // 以被害人陳述為主要來源，否則取最後一句
+  const v = src.map(id=>TXM[id]).filter(l=>l.sp==='被害人');
+  return (v.length? v[v.length-1] : TXM[src[src.length-1]]);
+}
+function gutterHTML(row){
+  const m = mainSrc(row.src), h = heat(m.t), more = row.src.length-1;
+  return {style:`--heat-bg:${h.bg};--heat-bar:${h.bar}`,
+    html:`${m.t}<span class="sp ${m.sp==='被害人'?'v':''}">${m.sp==='被害人'?'被':'員'}</span>${more?`<span class="more">+${more}</span>`:''}`};
+}
+/* 字元級 LCS diff（ASR 原文 vs 目前文字） */
+function diff(a,b){
+  const n=a.length,m=b.length,d=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)d[i][j]=a[i]===b[j]?d[i+1][j+1]+1:Math.max(d[i+1][j],d[i][j+1]);
+  let i=0,j=0,out=[];const push=(t,c)=>{const l=out[out.length-1];if(l&&l.t===t)l.c+=c;else out.push({t,c})};
+  while(i<n&&j<m){if(a[i]===b[j]){push('=',a[i]);i++;j++}else if(d[i+1][j]>=d[i][j+1]){push('-',a[i++])}else push('+',b[j++])}
+  while(i<n)push('-',a[i++]);while(j<m)push('+',b[j++]);
+  const ol=out.map(o=>o.t==='+'?'':o.t==='-'?`<del>${esc(o.c)}</del>`:esc(o.c)).join('');
+  const nl=out.map(o=>o.t==='-'?'':o.t==='+'?`<ins>${esc(o.c)}</ins>`:esc(o.c)).join('');
+  return {ol,nl};
+}
+
+/* ===================== render editor ===================== */
+let rowSeq=0; const ROWS={};
+function renderBlocks(){
+  const wrap=$('#blocks'); let html='';
+  BLOCKS.forEach((b,bi)=>{
+    html+=`<article class="block" id="${b.id}" data-b="${b.id}">
+      <div class="bh">
+        <button class="caret" data-collapse="${b.id}" title="收合／展開">${ICON.caret}</button>
+        <span class="idx">${b.summary?'Σ':String(bi+1).padStart(2,'0')}</span>
+        <h3>${b.name}${b.sub?`<small>${b.sub}</small>`:''}</h3>
+        <div class="right">
+          ${b.conflict?`<span class="pill conf">${ICON.conf}矛盾待確認</span>`:''}
+          <span class="cnt" data-cnt="${b.id}"></span>
+          ${pill(b.st,b.stLabel)}
+        </div>
+      </div><div class="rows">`;
+    b.rows.forEach(r=>{
+      const rid='r'+(++rowSeq); r.rid=rid; ROWS[rid]=r;
+      if(r.k==='s'){
+        const g=gutterHTML(r);
+        r.orig = r.asr || plain(r.h);
+        html+=`<div class="row${r.asr?' is-edited':''}" data-rid="${rid}">
+          <div class="gut" data-rid="${rid}" style="${g.style}" title="原話來源">${g.html}</div>
+          <div class="txt" contenteditable="true" spellcheck="false" data-rid="${rid}">${kw(r.h)}</div>
+          <div class="meta">
+            ${r.pend?`<span class="tag pend">${ICON.pend}待確認</span>`:''}
+            ${r.conf?`<span class="tag conf">${ICON.conf}與加總不符</span>`:''}
+            <span class="edited" data-diff="${rid}">${ICON.pen}已修改</span>
+          </div></div>`;
+      }else if(r.k==='c'){
+        html+=`<div class="row" data-rid="${rid}">
+          <div class="gut sys">${ICON.calc}系統計算</div>
+          <div class="txt">${kw(r.h)}</div><div class="meta"><span class="tag pend">${ICON.pend}差額 NT$50,000 待確認</span></div></div>`;
+      }else{
+        html+=`<div class="ghost" data-pid="${r.pid}" data-field="${esc(r.field)}"></div>`;
+      }
+    });
+    html+=`</div></article>`;
+  });
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.ghost').forEach(g=>fillGhost(g));
+}
+function ghostInner(pid, field, opts={}){
+  const p=PM[pid], st=state[pid], rk=opts.rank;
+  const stTxt = st==='asked'?`<span class="stmsg">已問 ・ 待被害人回答後補入區塊</span>`
+              : st==='skipped'?`<span class="stmsg">已略過</span>`
+              : `<span class="st">${ICON.warn}尚未提及</span>`;
+  const acts = st==='open'
+    ? `<button class="btn pri" data-act="asked" data-pid="${pid}">已問</button><button class="btn ghostb" data-act="skipped" data-pid="${pid}">略過</button>`
+    : `<button class="btn ghostb" data-act="open" data-pid="${pid}">復原</button>`;
+  return `<div class="g1">
+      ${rk?`<span class="rank" title="目前追問優先順序">#${rk}</span>`:''}
+      ${lvTag(p.lv)}
+      <span class="field">${esc(field)}</span>${stTxt}
+      ${opts.from?`<span class="from">${opts.from}</span>`:''}
+      <button class="expand" data-expand>顯示追問</button>
+      <span class="acts">${acts}</span>
+    </div>
+    <dl class="detail"><dt>建議追問</dt><dd class="q">「${esc(p.q)}」</dd><dt>為什麼要問</dt><dd class="why">${esc(p.why)}</dd></dl>`;
+}
+function top3(){return PROMPTS.filter(p=>state[p.id]==='open').slice(0,3).map(p=>p.id)}
+function fillGhost(g){
+  const pid=+g.dataset.pid, t=top3(), idx=t.indexOf(pid), st=state[pid];
+  const wasOpen=g.classList.contains('open');
+  g.className='ghost'+(st!=='open'?' '+st:(idx<0?' compact':''))+(wasOpen?' open':'');
+  g.innerHTML=ghostInner(pid,g.dataset.field,{rank:idx>=0?idx+1:0});
+}
+function refresh(){
+  document.querySelectorAll('#blocks .ghost').forEach(fillGhost);
+  // chips
+  const t=top3();
+  $('#chips').innerHTML = t.length? t.map((pid,i)=>{const p=PM[pid];
+    return `<button class="chip" data-jump="${pid}" title="${esc(p.q)}"><span class="rk">#${i+1}</span>${lvTag(p.lv)}<span class="q">${esc(p.q)}</span></button>`}).join('')
+    : `<span style="font-size:12.5px;color:var(--muted)">目前沒有待問的建議，可切到「簽名前檢查」做最後確認。</span>`;
+  // counts
+  BLOCKS.forEach(b=>{
+    const open=b.rows.filter(r=>r.k==='g'&&state[r.pid]==='open').length;
+    const el=document.querySelector(`[data-cnt="${b.id}"]`); if(el) el.textContent=open?`缺 ${open}`:'';
+  });
+  renderFlow();
+  const must=PROMPTS.filter(p=>p.lv==='must'&&state[p.id]==='open').length;
+  $('#mustN').textContent=must; $('#mustN').style.display=must?'':'none';
+  renderCheck();
+}
+
+/* ===================== outline rail ===================== */
+function renderFlow(){
+  const node=st=>`<span class="node ${st}">${st==='ok'?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4"><path d="M5 12l5 5 9-10"/></svg>':st==='pend'?'<b style="font-size:11px">!</b>':''}</span>`;
+  const item=b=>{const open=b.rows.filter(r=>r.k==='g'&&state[r.pid]==='open').length;
+    return `<li data-go="${b.id}" class="${activeB===b.id?'active':''}">${node(b.st)}<span class="lbl">${b.name}${b.sub?`<small>${b.sub}</small>`:''}${open?`<span class="miss">缺 ${open} 項</span>`:''}</span></li>`};
+  const flow=BLOCKS.filter(b=>!b.summary), sum=BLOCKS.filter(b=>b.summary);
+  $('#flow').innerHTML = `<ul class="flow">${flow.map(item).join('')}</ul><div class="sep"></div><h4>彙整</h4><ul class="flow">${sum.map(item).join('')}</ul>`;
+}
+let activeB='b1';
+
+/* ===================== transcript ===================== */
+function renderTx(){
+  $('#tx').innerHTML = TX.map(l=>`<div class="ln" id="tx-${l.id}">
+    <span class="ts">${l.t}</span>
+    <div><div class="who"><button class="spk ${l.sp==='被害人'?'v':''}" data-spk="${l.id}" title="點擊切換說話者">${l.sp} <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M7 4L3 8l4 4M3 8h12M17 20l4-4-4-4M21 16H9"/></svg></button>
+      ${l.low?`<span class="lowc">${ICON.warn}說話者可能標錯</span>`:''}${l.fixed?`<span class="fixed">✓ 已更正</span>`:''}</div>
+    <div class="say">${esc(l.s)}</div></div></div>`).join('') +
+  `<div class="ln live"><span class="ts">14:14:02</span><div><div class="who"><span class="spk" style="border-style:dashed;color:var(--muted)">辨識中</span></div><div class="say typing"><i></i><i></i><i></i></div></div></div>`;
+}
+function srcLinesHTML(src){
+  return src.map(id=>{const l=TXM[id];return `<div class="ln"><span class="ts">${l.t}</span><div><div class="who"><span class="spk ${l.sp==='被害人'?'v':''}">${l.sp}</span>${l.fixed?'<span class="fixed">✓ 說話者已更正</span>':''}</div><div class="say">${esc(l.s)}</div></div></div>`}).join('');
+}
+function highlightTx(src, scroll){
+  document.querySelectorAll('.ln.hl').forEach(e=>e.classList.remove('hl'));
+  (src||[]).forEach(id=>{const e=$('#tx-'+id); if(e) e.classList.add('hl')});
+  if(scroll&&src&&src.length){const e=$('#tx-'+src[0]); if(e) e.scrollIntoView({block:'center'});}
+}
+
+/* ===================== popover (blame) ===================== */
+const pop=$('#pop'); let pinned=null;
+function showPop(anchor, title, body, foot){
+  clearTimeout(hideT);
+  $('#popTitle').innerHTML=title; $('#popBody').innerHTML=body; $('#popFoot').innerHTML=foot||'';
+  pop.classList.add('show');
+  const r=anchor.getBoundingClientRect(), ph=pop.offsetHeight;
+  let top=r.bottom+6; if(top+ph>innerHeight-8) top=Math.max(8,r.top-ph-6);
+  let left=Math.min(r.left, innerWidth-pop.offsetWidth-12);
+  pop.style.top=top+'px'; pop.style.left=left+'px';
+}
+let hideT=null;
+function hidePop(){ clearTimeout(hideT); hideT=setTimeout(()=>{ if(!pinned) pop.classList.remove('show'); },220); }
+pop.addEventListener('mouseenter',()=>clearTimeout(hideT));
+function blamePop(gut){
+  const r=ROWS[gut.dataset.rid];
+  showPop(gut, `<b>原話來源</b> ・ ${r.src.length} 段逐字稿`, srcLinesHTML(r.src),
+    pinned===gut?'已釘選 ・ 按 Esc 或再點一次取消':'點擊左側欄可釘選，並在右側逐字稿標示');
+  pop.classList.toggle('pinned', pinned===gut);
+}
+function unpin(){ if(pinned){pinned.classList.remove('pinned'); pinned=null;} pop.classList.remove('show','pinned'); highlightTx([]); document.querySelectorAll('.row.linked').forEach(e=>e.classList.remove('linked')); }
+
+document.addEventListener('mouseover',e=>{
+  const g=e.target.closest('.gut[data-rid]');
+  if(g && !pinned){ blamePop(g); return; }
+  const d=e.target.closest('[data-diff]');
+  if(d && !pinned){
+    const r=ROWS[d.dataset.diff], cur=document.querySelector(`.txt[data-rid="${r.rid}"]`).textContent, df=diff(r.orig,cur);
+    showPop(d,'<b>修改紀錄</b> ・ 與語音辨識原文比對',
+      `<div class="diff" style="padding:6px 12px"><div><span class="lbl">ASR 原文</span>${df.ol}</div><div><span class="lbl">目前</span>${df.nl}</div></div>`,
+      `<button class="btn" data-revert="${r.rid}" style="font-size:11.5px">還原為原文</button>`);
+    pop.classList.add('keep');
+  }
+});
+document.addEventListener('mouseout',e=>{
+  const g=e.target.closest('.gut[data-rid],[data-diff]');
+  if(g && !g.contains(e.relatedTarget) && !(e.relatedTarget&&pop.contains(e.relatedTarget))) hidePop();
+});
+pop.addEventListener('mouseleave',e=>{ if(!pinned) hidePop(); });
+
+document.addEventListener('click',e=>{
+  const t=e.target;
+  const g=t.closest('.gut[data-rid]');
+  if(g){
+    if(pinned===g){unpin();return;}
+    unpin(); pinned=g; g.classList.add('pinned'); g.closest('.row')?.classList.add('linked');
+    blamePop(g); highlightTx(ROWS[g.dataset.rid].src,true); return;
+  }
+  if(t.closest('#popX')){unpin();return;}
+  const rv=t.closest('[data-revert]');
+  if(rv){const r=ROWS[rv.dataset.revert]; const el=document.querySelector(`.txt[data-rid="${r.rid}"]`);
+    el.textContent=r.orig; el.closest('.row').classList.remove('is-edited'); pop.classList.remove('show'); return;}
+  const act=t.closest('[data-act]');
+  if(act){state[act.dataset.pid]=act.dataset.act; refresh(); return;}
+  const ex=t.closest('[data-expand]');
+  if(ex){const gh=ex.closest('.ghost'); gh.classList.toggle('open'); ex.textContent=gh.classList.contains('open')?'收合':'顯示追問'; return;}
+  const col=t.closest('[data-collapse]');
+  if(col){document.getElementById(col.dataset.collapse).classList.toggle('collapsed'); return;}
+  const go=t.closest('[data-go]');
+  if(go){ if(document.body.classList.contains('mode-check')) setMode('ask');
+    const b=document.getElementById(go.dataset.go); b.classList.remove('collapsed'); b.scrollIntoView({block:'start'}); activeB=go.dataset.go; renderFlow(); return;}
+  const j=t.closest('[data-jump]');
+  if(j){ if(document.body.classList.contains('mode-check')) setMode('ask');
+    const gh=document.querySelector(`#blocks .ghost[data-pid="${j.dataset.jump}"]`);
+    gh.closest('.block').classList.remove('collapsed');
+    gh.scrollIntoView({block:'center'}); gh.animate([{boxShadow:'0 0 0 4px rgba(224,164,0,.55)'},{boxShadow:'0 0 0 0 rgba(224,164,0,0)'}],{duration:1200}); return;}
+  const sp=t.closest('[data-spk]');
+  if(sp){const l=TXM[sp.dataset.spk]; l.sp=l.sp==='員警'?'被害人':'員警'; l.fixed=true; l.low=false; renderTx(); rerenderGutters(); return;}
+  const src=t.closest('[data-src]');
+  if(src){highlightTx(src.dataset.src.split(','),true);return;}
+  if(pinned && !pop.contains(t)) unpin();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){unpin(); document.activeElement.blur?.()}});
+
+/* 編輯：focus 時連結逐字稿；輸入時標記已修改 */
+document.addEventListener('focusin',e=>{
+  const x=e.target.closest('.txt[data-rid]'); if(!x) return;
+  if(!pinned) highlightTx(ROWS[x.dataset.rid].src,true);
+});
+document.addEventListener('focusout',e=>{ if(e.target.closest('.txt[data-rid]') && !pinned) highlightTx([]); });
+document.addEventListener('input',e=>{
+  const x=e.target.closest('.txt[data-rid]'); if(!x) return;
+  const r=ROWS[x.dataset.rid];
+  x.closest('.row').classList.toggle('is-edited', x.textContent!==r.orig);
+});
+function rerenderGutters(){
+  document.querySelectorAll('.gut[data-rid]').forEach(g=>{const r=ROWS[g.dataset.rid]; if(!r||!r.src) return; const h=gutterHTML(r); g.setAttribute('style',h.style); g.innerHTML=h.html;});
+  if(pinned) blamePop(pinned);
+}
+
+/* 捲動時：釘選中的來源視窗跟著移動，未釘選則關閉 */
+$('#editor').addEventListener('scroll',()=>{ if(pinned){ if(pinned.isConnected) blamePop(pinned); } else pop.classList.remove('show'); },{passive:true});
+/* 捲動時同步左側大綱 */
+const io=new IntersectionObserver(ents=>{
+  ents.forEach(en=>{ if(en.isIntersecting){ activeB=en.target.id; document.querySelectorAll('#flow li, .rail li').forEach(li=>li.classList.toggle('active',li.dataset.go===activeB)); }});
+},{root:$('#editor'),rootMargin:'-20% 0px -70% 0px'});
+
+/* ===================== check mode ===================== */
+function renderCheck(){
+  const groups=['must','lead','add'];
+  const cnt=lv=>PROMPTS.filter(p=>p.lv===lv&&state[p.id]==='open').length;
+  const fieldOf=pid=>{for(const b of BLOCKS)for(const r of b.rows)if(r.k==='g'&&r.pid===pid)return {f:r.field,b};};
+  const must=cnt('must');
+  let h=`<div class="ck-head"><div><h2>簽名前檢查</h2><p>依等級列出所有缺漏，處理完「必要」項目再請被害人閱覽簽名。</p></div>
+    <div class="sign"><button class="btn pri" ${must?'disabled':''}>確認無誤，進入閱覽簽名</button><small>${must?`尚有 ${must} 項「必要」未處理`:'必要項目已處理完畢'}</small></div></div>
+    <div class="sum">
+      <div><b style="color:var(--lv-must)">${cnt('must')}</b><span>必要項目</span></div>
+      <div><b style="color:var(--lv-lead)">${cnt('lead')}</b><span>偵查線索</span></div>
+      <div><b style="color:var(--lv-add)">${cnt('add')}</b><span>補充</span></div>
+      <div><b style="color:var(--pend)">2</b><span>待確認陳述</span></div>
+    </div>
+    <div class="cols">    <div class="card conflict"><div class="card-h">${ICON.conf}矛盾提示 <small>金額前後不一致</small></div><div class="card-b">
+      <div class="eq">
+        <span class="box"><small>被害人陳述</small><span class="kw kw-a">40 萬</span></span>
+        <span class="op">≠</span>
+        <span class="box"><small>交付 #1</small><span class="kw kw-a">NT$50,000</span></span><span class="op">＋</span>
+        <span class="box"><small>交付 #2</small><span class="kw kw-a">NT$300,000</span></span><span class="op">＋</span>
+        <span class="box" style="border-style:dashed"><small>交付 #3</small>金額未知</span>
+      </div>
+      <div style="font-size:13px;color:var(--ink2)">已知兩筆合計 35 萬，交付 #3 金額未提及 → 待確認。對應追問 #5「總共被騙的金額是多少？跟每一筆對得起來嗎？」</div>
+      <div class="srcs"><button class="srcbtn" data-src="L17">14:13:10 被害人</button><button class="srcbtn" data-src="L8">14:06:15 被害人</button><button class="srcbtn" data-src="L10">14:08:52 被害人</button><button class="srcbtn" data-src="L14">14:11:05 被害人</button></div>
+    </div></div><div class="card"><div class="card-h">應優先調閱 <small>依時效排序</small></div><div class="card-b"><ol class="pull">
+      <li class="urgent"><span>竹北市○○路便利商店及周邊監視器（9/18 19:00–20:00）</span><span class="due">最優先・有保存期限</span></li>
+      <li><span>帳號 <span class="kw kw-i">822-0000-1234-5678</span> 交易明細、通報警示帳戶</span><span class="due"></span></li>
+      <li><span>LINE ID <span class="kw kw-i">invest_chen888</span> 帳號資料</span><span class="due"></span></li>
+      <li><span>「鼎盛國際」APP 下載來源／網域資料</span><span class="due"></span></li>
+    </ol></div></div></div>`;
+  groups.forEach(lv=>{
+    const ps=PROMPTS.filter(p=>p.lv===lv);
+    h+=`<div class="card lvgroup"><div class="card-h">${lvTag(lv)} <small>${ps.length} 項，未處理 ${cnt(lv)}</small></div><div class="card-b">`;
+    ps.forEach(p=>{const fb=fieldOf(p.id); const st=state[p.id];
+      h+=`<div class="ghost ${st!=='open'?st:''}">${ghostInner(p.id,fb.f,{from:fb.b.name+(fb.b.sub?'・'+fb.b.sub:'')})}</div>`;});
+    h+=`</div></div>`;
+  });
+  const pend=[];BLOCKS.forEach(b=>b.rows.forEach(r=>{if(r.pend||r.conf)pend.push({b,r})}));
+  h+=`<div class="card"><div class="card-h">${ICON.pend}待確認的陳述 <small>已記錄但需再確認</small></div><div class="card-b pending-rows">`+
+    pend.map(({b,r})=>{const g=gutterHTML(r);return `<div class="pr"><div class="gut" data-rid="${r.rid}" style="${g.style}">${g.html}</div><div>${kw(r.h)}<div style="font-size:11.5px;color:var(--muted)">${b.name}${b.sub?'・'+b.sub:''}</div></div><span class="tag pend">待確認</span></div>`}).join('')+
+    `</div></div>`;
+  $('#check').innerHTML=h;
+}
+
+/* ===================== mode ===================== */
+function setMode(m){
+  unpin();
+  document.body.classList.toggle('mode-check',m==='check');
+  $('#mAsk').classList.toggle('on',m!=='check'); $('#mCheck').classList.toggle('on',m==='check');
+  history.replaceState(null,'',m==='check'?'#check':location.pathname);
+  $('#editor').scrollTop=0;
+}
+$('#mAsk').onclick=()=>setMode('ask'); $('#mCheck').onclick=()=>setMode('check');
+
+/* ===================== recording ===================== */
+let recS=12*60+4, rec=true;
+setInterval(()=>{ if(!rec) return; recS++; const h=String(Math.floor(recS/3600)).padStart(2,'0'),m=String(Math.floor(recS/60)%60).padStart(2,'0'),s=String(recS%60).padStart(2,'0'); $('#recTime').textContent=`${h}:${m}:${s}`;},1000);
+setInterval(()=>{ if(!rec) return; document.querySelectorAll('#meter i').forEach(i=>i.style.height=(3+Math.random()*11)+'px');},140);
+$('#recBtn').onclick=()=>{rec=!rec; $('#rec').classList.toggle('paused',!rec); $('#recLabel').textContent=rec?'錄音中':'已暫停'; $('#recBtn').textContent=rec?'暫停':'繼續';};
+
+/* ===================== init ===================== */
+renderBlocks(); renderTx(); refresh();
+document.querySelectorAll('.block').forEach(b=>io.observe(b));
+if(location.hash==='#check') setMode('check');
+</script>
+</body>
+</html>
